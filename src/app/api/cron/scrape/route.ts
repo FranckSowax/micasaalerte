@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   // Get all active groups with user profiles
   const { data: groups } = await serviceClient
     .from("facebook_groups")
-    .select("*, profiles!inner(rapidapi_key, anthropic_api_key)")
+    .select("*, profiles!inner(rapidapi_key, kimi_api_key)")
     .eq("is_active", true);
 
   if (!groups?.length) {
@@ -25,10 +25,10 @@ export async function POST(request: Request) {
   for (const group of groups) {
     const profile = (group as Record<string, unknown>).profiles as {
       rapidapi_key: string | null;
-      anthropic_api_key: string | null;
+      kimi_api_key: string | null;
     };
     const rapidapiKey = profile?.rapidapi_key || process.env.RAPIDAPI_KEY;
-    const anthropicKey = profile?.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+    const kimiKey = profile?.kimi_api_key || process.env.KIMI_API_KEY;
 
     if (!rapidapiKey) continue;
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
         if (existing) continue;
 
         try {
-          const analysis = await analyzePost(text, anthropicKey);
+          const analysis = await analyzePost(text, kimiKey);
           if (!analysis.is_real_estate) continue;
 
           await serviceClient.from("annonces").insert({

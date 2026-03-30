@@ -18,7 +18,7 @@ CREATE TABLE profiles (
     whatsapp_phone TEXT,
     -- Clés API stockées par utilisateur
     rapidapi_key TEXT,
-    anthropic_api_key TEXT,
+    kimi_api_key TEXT,
     whatsapp_phone_number_id TEXT,
     whatsapp_access_token TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),

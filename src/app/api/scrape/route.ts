@@ -17,12 +17,12 @@ export async function POST(request: Request) {
   const serviceClient = createServiceClient();
   const { data: profile } = await serviceClient
     .from("profiles")
-    .select("rapidapi_key, anthropic_api_key")
+    .select("rapidapi_key, kimi_api_key")
     .eq("id", user.id)
     .single();
 
   const rapidapiKey = profile?.rapidapi_key || process.env.RAPIDAPI_KEY;
-  const anthropicKey = profile?.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+  const kimiKey = profile?.kimi_api_key || process.env.KIMI_API_KEY;
 
   if (!rapidapiKey) {
     return NextResponse.json({ error: "Clé RapidAPI non configurée" }, { status: 400 });
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
 
           // Analyze with AI
           try {
-            const analysis = await analyzePost(text, anthropicKey);
+            const analysis = await analyzePost(text, kimiKey);
 
             if (!analysis.is_real_estate) {
               postsNotImmo++;

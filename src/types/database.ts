@@ -18,7 +18,7 @@ export interface Database {
           plan: "free" | "pro" | "enterprise";
           whatsapp_phone: string | null;
           rapidapi_key: string | null;
-          anthropic_api_key: string | null;
+          kimi_api_key: string | null;
           whatsapp_phone_number_id: string | null;
           whatsapp_access_token: string | null;
           created_at: string;
@@ -32,7 +32,7 @@ export interface Database {
           plan?: "free" | "pro" | "enterprise";
           whatsapp_phone?: string | null;
           rapidapi_key?: string | null;
-          anthropic_api_key?: string | null;
+          kimi_api_key?: string | null;
           whatsapp_phone_number_id?: string | null;
           whatsapp_access_token?: string | null;
           created_at?: string;
@@ -46,7 +46,7 @@ export interface Database {
           plan?: "free" | "pro" | "enterprise";
           whatsapp_phone?: string | null;
           rapidapi_key?: string | null;
-          anthropic_api_key?: string | null;
+          kimi_api_key?: string | null;
           whatsapp_phone_number_id?: string | null;
           whatsapp_access_token?: string | null;
           created_at?: string;

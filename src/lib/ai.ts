@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse d'annonces immobilières au Gabon.
 Analyse le post Facebook suivant et extrais les informations en JSON strict.
@@ -48,26 +48,31 @@ export async function analyzePost(
   text: string,
   apiKey?: string
 ): Promise<AIExtractionResult> {
-  const client = new Anthropic({
-    apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
+  const client = new OpenAI({
+    apiKey: apiKey || process.env.KIMI_API_KEY,
+    baseURL: "https://api.moonshot.cn/v1",
   });
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+  const response = await client.chat.completions.create({
+    model: "kimi-k2-0711",
     max_tokens: 1024,
     messages: [
-      {
-        role: "user",
-        content: `Analyse ce post Facebook :\n\n${text}`,
-      },
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: `Analyse ce post Facebook :\n\n${text}` },
     ],
-    system: SYSTEM_PROMPT,
+    temperature: 0.1,
   });
 
-  const content = response.content[0];
-  if (content.type !== "text") {
-    throw new Error("Unexpected response type");
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("Pas de réponse de l'IA");
   }
 
-  return JSON.parse(content.text) as AIExtractionResult;
+  // Nettoyer la réponse si elle contient des blocs markdown
+  const cleaned = content
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .trim();
+
+  return JSON.parse(cleaned) as AIExtractionResult;
 }

@@ -19,7 +19,7 @@ export default function SettingsPage() {
     full_name: "",
     whatsapp_phone: "",
     rapidapi_key: "",
-    anthropic_api_key: "",
+    kimi_api_key: "",
     whatsapp_phone_number_id: "",
     whatsapp_access_token: "",
   });
@@ -42,7 +42,7 @@ export default function SettingsPage() {
           full_name: data.full_name || "",
           whatsapp_phone: data.whatsapp_phone || "",
           rapidapi_key: data.rapidapi_key || "",
-          anthropic_api_key: data.anthropic_api_key || "",
+          kimi_api_key: data.kimi_api_key || "",
           whatsapp_phone_number_id: data.whatsapp_phone_number_id || "",
           whatsapp_access_token: data.whatsapp_access_token || "",
         });
@@ -62,7 +62,7 @@ export default function SettingsPage() {
         full_name: form.full_name,
         whatsapp_phone: form.whatsapp_phone,
         rapidapi_key: form.rapidapi_key || null,
-        anthropic_api_key: form.anthropic_api_key || null,
+        kimi_api_key: form.kimi_api_key || null,
         whatsapp_phone_number_id: form.whatsapp_phone_number_id || null,
         whatsapp_access_token: form.whatsapp_access_token || null,
       })
@@ -149,14 +149,14 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">Pour le scraping des groupes Facebook</p>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Clé Anthropic</label>
+            <label className="text-sm font-medium">Clé Kimi (Moonshot AI)</label>
             <Input
               type={showKeys ? "text" : "password"}
-              placeholder="sk-ant-..."
-              value={form.anthropic_api_key}
-              onChange={(e) => setForm({ ...form, anthropic_api_key: e.target.value })}
+              placeholder="sk-..."
+              value={form.kimi_api_key}
+              onChange={(e) => setForm({ ...form, kimi_api_key: e.target.value })}
             />
-            <p className="text-xs text-muted-foreground">Pour l&apos;analyse IA des annonces</p>
+            <p className="text-xs text-muted-foreground">Pour l&apos;analyse IA des annonces (Kimi K2.5)</p>
           </div>
         </CardContent>
       </Card>
