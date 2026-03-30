@@ -50,11 +50,11 @@ export async function analyzePost(
 ): Promise<AIExtractionResult> {
   const client = new OpenAI({
     apiKey: apiKey || process.env.KIMI_API_KEY,
-    baseURL: "https://api.moonshot.cn/v1",
+    baseURL: "https://api.moonshot.ai/v1",
   });
 
   const response = await client.chat.completions.create({
-    model: "kimi-k2-0711",
+    model: "kimi-k2-0711-preview",
     max_tokens: 1024,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
