@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Database,
+  UserCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/annonces", label: "Annonces", icon: Building2 },
   { href: "/groupes", label: "Groupes FB", icon: Users },
+  { href: "/agents", label: "Agents immo", icon: UserCircle },
   { href: "/groupes/raw-posts", label: "Données brutes", icon: Database },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/settings", label: "Paramètres", icon: Settings },
