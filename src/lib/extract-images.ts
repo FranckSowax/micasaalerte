@@ -30,7 +30,7 @@ export function extractImages(post: Record<string, unknown>): string[] {
     }
   }
 
-  // album_preview - can be array of objects or strings
+  // album_preview - array of { type, image_file_uri, url, id }
   if (post.album_preview) {
     const album = Array.isArray(post.album_preview) ? post.album_preview : [post.album_preview];
     for (const item of album) {
@@ -38,7 +38,8 @@ export function extractImages(post: Record<string, unknown>): string[] {
         images.push(item);
       } else if (typeof item === "object" && item !== null) {
         const obj = item as Record<string, unknown>;
-        if (typeof obj.url === "string") images.push(obj.url);
+        // facebook-scraper3 format: image_file_uri is the actual image URL
+        if (typeof obj.image_file_uri === "string") images.push(obj.image_file_uri);
         if (typeof obj.src === "string") images.push(obj.src);
         if (typeof obj.image === "string") images.push(obj.image);
         // Nested image object
@@ -46,6 +47,7 @@ export function extractImages(post: Record<string, unknown>): string[] {
           const img = obj.image as Record<string, unknown>;
           if (typeof img.url === "string") images.push(img.url);
           if (typeof img.src === "string") images.push(img.src);
+          if (typeof img.image_file_uri === "string") images.push(img.image_file_uri);
         }
       }
     }
