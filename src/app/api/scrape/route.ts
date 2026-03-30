@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
+import { extractImages } from "@/lib/extract-images";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 120; // Allow up to 2 min for scraping
@@ -106,34 +107,8 @@ export async function POST(request: Request) {
             ? new Date(post.timestamp * 1000).toISOString()
             : post.created_time || null;
 
-          // Extract images from all possible fields
-          const images: string[] = [];
-          // Direct fields
-          if (post.photo_url) images.push(post.photo_url);
-          if (post.image) images.push(post.image);
-          if (post.full_picture) images.push(post.full_picture);
-          if (post.picture) images.push(post.picture);
-          // Array fields
-          if (Array.isArray(post.images)) images.push(...post.images);
-          if (Array.isArray(post.photos)) images.push(...post.photos);
-          // Nested attachments
-          if (post.attachments) {
-            const atts = Array.isArray(post.attachments) ? post.attachments : [post.attachments];
-            for (const att of atts) {
-              if (att.media?.image?.src) images.push(att.media.image.src);
-              if (att.url && /\.(jpg|jpeg|png|webp)/i.test(att.url)) images.push(att.url);
-              if (att.subattachments?.data) {
-                for (const sub of att.subattachments.data) {
-                  if (sub.media?.image?.src) images.push(sub.media.image.src);
-                }
-              }
-            }
-          }
-          // Attached post images
-          if (post.attached_post?.photo_url) images.push(post.attached_post.photo_url);
-          if (post.attached_post?.full_picture) images.push(post.attached_post.full_picture);
-          // Deduplicate
-          const uniqueImages = Array.from(new Set(images.filter(Boolean)));
+          // Extract images from all possible API response fields
+          const uniqueImages = extractImages(post);
 
           // No text → skip
           if (!text || !postId) {
