@@ -16,6 +16,7 @@ import {
   X,
   Database,
   UserCircle,
+  History,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/groupes", label: "Groupes FB", icon: Users },
   { href: "/agents", label: "Agents immo", icon: UserCircle },
   { href: "/groupes/raw-posts", label: "Données brutes", icon: Database },
+  { href: "/historique", label: "Historique", icon: History },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
