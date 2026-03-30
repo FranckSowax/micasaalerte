@@ -62,6 +62,9 @@ export default function AgentsPage() {
   const [success, setSuccess] = useState("");
   const [scrapeResults, setScrapeResults] = useState<ScrapeResult[] | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [memberUrl, setMemberUrl] = useState("");
+  const [memberScraping, setMemberScraping] = useState(false);
+  const [memberResult, setMemberResult] = useState<Record<string, unknown> | null>(null);
   const supabase = createClient();
 
   const fetchAgents = async () => {
@@ -153,6 +156,47 @@ export default function AgentsPage() {
     setScraping(null);
   };
 
+  const parseMemberUrl = (url: string) => {
+    // https://www.facebook.com/groups/985585794841161/user/61550791965459/
+    const match = url.match(/facebook\.com\/groups\/([^/]+)\/user\/([^/?]+)/);
+    if (match) return { groupId: match[1], memberId: match[2] };
+    return null;
+  };
+
+  const handleMemberScrape = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(""); setSuccess(""); setMemberResult(null);
+
+    const parsed = parseMemberUrl(memberUrl);
+    if (!parsed) {
+      setError("URL invalide. Format attendu : https://facebook.com/groups/GROUP_ID/user/USER_ID/");
+      return;
+    }
+
+    setMemberScraping(true);
+    try {
+      const res = await fetch("/api/scrape-member", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupId: parsed.groupId, memberId: parsed.memberId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Erreur lors de la collecte");
+      } else {
+        setMemberResult(data);
+        const parts = [`${data.postsFound} posts scannés dans le groupe`, `${data.postsFromMember} de ce membre`];
+        if (data.postsNew > 0) parts.push(`${data.postsNew} annonce(s) ajoutée(s)`);
+        if (data.postsNotImmo > 0) parts.push(`${data.postsNotImmo} pas immobilier`);
+        if (data.postsDuplicate > 0) parts.push(`${data.postsDuplicate} doublon(s)`);
+        setSuccess(`Collecte terminée ! ${parts.join(", ")}. (${data.apiCalls?.rapidapi} req RapidAPI, ${data.apiCalls?.kimi} req Kimi)`);
+      }
+    } catch {
+      setError("Erreur de connexion");
+    }
+    setMemberScraping(false);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -238,6 +282,50 @@ export default function AgentsPage() {
               Ajouter
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Scrape member from group */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Scraper un membre dans un groupe</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Collez le lien Facebook du type : facebook.com/groups/XXX/user/YYY
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleMemberScrape} className="flex flex-col sm:flex-row gap-3">
+            <Input
+              placeholder="https://facebook.com/groups/123456/user/789012"
+              value={memberUrl}
+              onChange={(e) => setMemberUrl(e.target.value)}
+              className="flex-1"
+              required
+            />
+            <Button type="submit" disabled={memberScraping}>
+              {memberScraping ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scan en cours...</>
+              ) : (
+                <><Play className="h-4 w-4 mr-1" /> Scraper</>
+              )}
+            </Button>
+          </form>
+          {memberResult && (memberResult.details as Record<string, unknown>[])?.length > 0 && (
+            <div className="mt-4 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Posts du membre :</p>
+              {(memberResult.details as Record<string, unknown>[]).map((detail, i) => (
+                <div key={i} className="flex items-start gap-2 p-2 rounded bg-background text-xs">
+                  <Badge className={`shrink-0 text-[10px] ${statusLabels[detail.status as string]?.color || ""}`}>
+                    {statusLabels[detail.status as string]?.label || String(detail.status)}
+                  </Badge>
+                  <span className="flex-1 text-muted-foreground truncate">{String(detail.text)}...</span>
+                  {detail.type ? <span className="text-foreground shrink-0">{String(detail.type)}</span> : null}
+                  {detail.prix ? <span className="text-primary shrink-0">{Number(detail.prix).toLocaleString()} FCFA</span> : null}
+                  {detail.images ? <span className="text-muted-foreground shrink-0">{String(detail.images)} img</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
