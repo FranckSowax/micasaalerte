@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Play, Loader2 } from "lucide-react";
+import { Plus, Trash2, Play, Loader2, CheckCircle2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { FacebookGroup } from "@/types/database";
 
@@ -18,6 +18,7 @@ export default function GroupesPage() {
   const [newGroupUrl, setNewGroupUrl] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const supabase = createClient();
 
   const fetchGroups = async () => {
@@ -25,7 +26,7 @@ export default function GroupesPage() {
       .from("facebook_groups")
       .select("*")
       .order("created_at", { ascending: false });
-    setGroups(data || []);
+    setGroups((data || []) as unknown as FacebookGroup[]);
     setLoading(false);
   };
 
@@ -48,17 +49,22 @@ export default function GroupesPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
     setAdding(true);
 
     const groupId = extractGroupId(newGroupUrl);
     if (!groupId) {
-      setError("URL de groupe Facebook invalide");
+      setError("URL de groupe Facebook invalide. Format attendu : https://facebook.com/groups/123456");
       setAdding(false);
       return;
     }
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setError("Session expirée. Veuillez vous reconnecter.");
+      setAdding(false);
+      return;
+    }
 
     const { error: insertError } = await supabase.from("facebook_groups").insert({
       user_id: user.id,
@@ -74,6 +80,7 @@ export default function GroupesPage() {
     } else {
       setNewGroupUrl("");
       setNewGroupName("");
+      setSuccess("Groupe ajouté avec succès !");
       fetchGroups();
     }
     setAdding(false);
@@ -92,6 +99,8 @@ export default function GroupesPage() {
 
   const handleScrape = async (groupId?: string) => {
     setScraping(groupId || "all");
+    setError("");
+    setSuccess("");
     try {
       const res = await fetch("/api/scrape", {
         method: "POST",
@@ -101,10 +110,22 @@ export default function GroupesPage() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Erreur lors de la collecte");
+      } else {
+        const results = data.results || [];
+        const totalNew = results.reduce((sum: number, r: Record<string, number>) => sum + (r.postsNew || 0), 0);
+        const totalFound = results.reduce((sum: number, r: Record<string, number>) => sum + (r.postsFound || 0), 0);
+        const errors = results.filter((r: Record<string, string>) => r.error);
+
+        if (errors.length > 0) {
+          setError(`Erreur(s) : ${errors.map((r: Record<string, string>) => `${r.group}: ${r.error}`).join(", ")}`);
+        } else {
+          setSuccess(`Collecte terminée ! ${totalFound} post(s) trouvé(s), ${totalNew} nouvelle(s) annonce(s) ajoutée(s).`);
+        }
+        fetchGroups();
       }
-      fetchGroups();
-    } catch {
-      setError("Erreur de connexion");
+    } catch (err) {
+      setError("Erreur de connexion au serveur");
+      console.error("Scrape error:", err);
     }
     setScraping(null);
   };
@@ -124,6 +145,19 @@ export default function GroupesPage() {
           )}
         </Button>
       </div>
+
+      {/* Messages */}
+      {error && (
+        <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="p-3 rounded-md bg-green-500/10 text-green-400 text-sm flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {success}
+        </div>
+      )}
 
       {/* Add group form */}
       <Card>
@@ -151,9 +185,6 @@ export default function GroupesPage() {
               Ajouter
             </Button>
           </form>
-          {error && (
-            <p className="text-destructive text-sm mt-2">{error}</p>
-          )}
         </CardContent>
       </Card>
 
