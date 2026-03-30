@@ -173,10 +173,22 @@ export default function RawPostsPage() {
                       {post.raw_images?.length > 0 && (
                         <div>
                           <p className="text-xs font-medium text-muted-foreground mb-1">IMAGES ({post.raw_images.length})</p>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {post.raw_images.map((url, i) => (
-                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate max-w-xs">
-                                {url}
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                                <div className="relative aspect-video rounded overflow-hidden bg-secondary border border-border hover:border-primary/50 transition-colors">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={url}
+                                    alt={`Image ${i + 1}`}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = "none";
+                                      (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="flex items-center justify-center h-full text-[10px] text-muted-foreground p-1">Indisponible</div>';
+                                    }}
+                                  />
+                                </div>
                               </a>
                             ))}
                           </div>

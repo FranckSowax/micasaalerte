@@ -173,7 +173,25 @@ export default function AnnoncesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {annonces.map((annonce) => (
             <Link key={annonce.id} href={`/annonces/${annonce.id}`}>
-              <Card className="hover:border-primary/50 transition-colors h-full">
+              <Card className="hover:border-primary/50 transition-colors h-full overflow-hidden">
+                {/* Thumbnail */}
+                {annonce.raw_images?.length > 0 && (
+                  <div className="relative h-40 bg-secondary">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={annonce.raw_images[0]}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    {annonce.raw_images.length > 1 && (
+                      <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-0.5 rounded">
+                        +{annonce.raw_images.length - 1} photo{annonce.raw_images.length > 2 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <CardContent className="p-4 flex flex-col h-full">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex gap-2 flex-wrap">
