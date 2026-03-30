@@ -100,10 +100,40 @@ export async function POST(request: Request) {
           postsFound++;
           const postId = post.post_id || post.id;
           const text = post.message || post.text || post.attached_post?.message || "";
-          const postUrl = post.url || post.post_url || null;
-          const authorName = post.author?.name || null;
-          const postedAt = post.timestamp ? new Date(post.timestamp * 1000).toISOString() : null;
-          const images = post.photo_url ? [post.photo_url] : post.images || [];
+          const postUrl = post.url || post.post_url || post.link || null;
+          const authorName = post.author?.name || post.user?.name || null;
+          const postedAt = post.timestamp
+            ? new Date(post.timestamp * 1000).toISOString()
+            : post.created_time || null;
+
+          // Extract images from all possible fields
+          const images: string[] = [];
+          // Direct fields
+          if (post.photo_url) images.push(post.photo_url);
+          if (post.image) images.push(post.image);
+          if (post.full_picture) images.push(post.full_picture);
+          if (post.picture) images.push(post.picture);
+          // Array fields
+          if (Array.isArray(post.images)) images.push(...post.images);
+          if (Array.isArray(post.photos)) images.push(...post.photos);
+          // Nested attachments
+          if (post.attachments) {
+            const atts = Array.isArray(post.attachments) ? post.attachments : [post.attachments];
+            for (const att of atts) {
+              if (att.media?.image?.src) images.push(att.media.image.src);
+              if (att.url && /\.(jpg|jpeg|png|webp)/i.test(att.url)) images.push(att.url);
+              if (att.subattachments?.data) {
+                for (const sub of att.subattachments.data) {
+                  if (sub.media?.image?.src) images.push(sub.media.image.src);
+                }
+              }
+            }
+          }
+          // Attached post images
+          if (post.attached_post?.photo_url) images.push(post.attached_post.photo_url);
+          if (post.attached_post?.full_picture) images.push(post.attached_post.full_picture);
+          // Deduplicate
+          const uniqueImages = Array.from(new Set(images.filter(Boolean)));
 
           // No text → skip
           if (!text || !postId) {
@@ -116,7 +146,7 @@ export async function POST(request: Request) {
               fb_post_url: postUrl,
               fb_author_name: authorName,
               raw_text: text || "(aucun texte)",
-              raw_images: images,
+              raw_images: uniqueImages,
               fb_posted_at: postedAt,
               ai_status: "no_text",
             }, { onConflict: "user_id,fb_post_id" });
@@ -147,7 +177,7 @@ export async function POST(request: Request) {
             fb_post_url: postUrl,
             fb_author_name: authorName,
             raw_text: text,
-            raw_images: images,
+            raw_images: uniqueImages,
             fb_posted_at: postedAt,
             ai_status: "pending",
           }).select().single();
@@ -184,7 +214,7 @@ export async function POST(request: Request) {
               fb_author_id: post.author?.id ? String(post.author.id) : null,
               fb_posted_at: postedAt,
               raw_text: text,
-              raw_images: images,
+              raw_images: uniqueImages,
               type_bien: analysis.type_bien,
               type_offre: analysis.type_offre,
               prix: analysis.prix,
