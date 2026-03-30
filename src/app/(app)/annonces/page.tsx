@@ -42,7 +42,7 @@ export default function AnnoncesPage() {
       .select("*")
       .eq("ai_is_real_estate", true)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(200);
 
     if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
     if (filters.type_bien) query = query.eq("type_bien", filters.type_bien);
