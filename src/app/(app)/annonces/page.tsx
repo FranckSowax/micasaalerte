@@ -34,6 +34,9 @@ export default function AnnoncesPage() {
     prix_max: "",
     quartier: "",
     search: "",
+    date_from: "",
+    date_to: "",
+    has_images: "",
   });
   const supabase = createClient();
 
@@ -53,9 +56,20 @@ export default function AnnoncesPage() {
     if (filters.prix_max) query = query.lte("prix", Number(filters.prix_max));
     if (filters.quartier) query = query.ilike("quartier", `%${filters.quartier}%`);
     if (filters.search) query = query.or(`raw_text.ilike.%${filters.search}%,ai_summary.ilike.%${filters.search}%`);
+    if (filters.date_from) query = query.gte("fb_posted_at", filters.date_from);
+    if (filters.date_to) query = query.lte("fb_posted_at", `${filters.date_to}T23:59:59`);
 
     const { data } = await query;
-    setAnnonces(data || []);
+    let filtered = data || [];
+
+    // Client-side filter for images (can't filter array length in Supabase)
+    if (filters.has_images === "yes") {
+      filtered = filtered.filter((a) => a.raw_images && a.raw_images.length > 0);
+    } else if (filters.has_images === "no") {
+      filtered = filtered.filter((a) => !a.raw_images || a.raw_images.length === 0);
+    }
+
+    setAnnonces(filtered);
     setLoading(false);
   }, [filters]);
 
@@ -69,7 +83,7 @@ export default function AnnoncesPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ type_offre: "", type_bien: "", status: "", prix_min: "", prix_max: "", quartier: "", search: "" });
+    setFilters({ type_offre: "", type_bien: "", status: "", prix_min: "", prix_max: "", quartier: "", search: "", date_from: "", date_to: "", has_images: "" });
   };
 
   const hasFilters = Object.values(filters).some(Boolean);
@@ -109,7 +123,7 @@ export default function AnnoncesPage() {
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="relative col-span-2 sm:col-span-3 lg:col-span-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Rechercher..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} className="pl-9" />
@@ -124,10 +138,23 @@ export default function AnnoncesPage() {
             </select>
             <Input type="number" placeholder="Prix min" value={filters.prix_min} onChange={(e) => setFilters({ ...filters, prix_min: e.target.value })} />
             <Input type="number" placeholder="Prix max" value={filters.prix_max} onChange={(e) => setFilters({ ...filters, prix_max: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
             <Input placeholder="Quartier" value={filters.quartier} onChange={(e) => setFilters({ ...filters, quartier: e.target.value })} />
             <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
               <option value="">Statut</option>
               {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            </select>
+            <div className="space-y-1">
+              <Input type="date" value={filters.date_from} onChange={(e) => setFilters({ ...filters, date_from: e.target.value })} className="h-10" title="Publié depuis" />
+            </div>
+            <div className="space-y-1">
+              <Input type="date" value={filters.date_to} onChange={(e) => setFilters({ ...filters, date_to: e.target.value })} className="h-10" title="Publié jusqu'au" />
+            </div>
+            <select value={filters.has_images} onChange={(e) => setFilters({ ...filters, has_images: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">Photos</option>
+              <option value="yes">Avec photos</option>
+              <option value="no">Sans photos</option>
             </select>
           </div>
           {hasFilters && (
