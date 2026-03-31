@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
+import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
 
     if (!rapidapiKey) continue;
 
+    await sleep(2000); // Rate limit between groups
     let postsNew = 0;
 
     try {
@@ -39,7 +41,7 @@ export async function POST(request: Request) {
       url.searchParams.set("group_id", group.group_id);
       url.searchParams.set("sorting_order", "CHRONOLOGICAL");
 
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithRetry(url.toString(), {
         headers: {
           "x-rapidapi-key": rapidapiKey,
           "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",

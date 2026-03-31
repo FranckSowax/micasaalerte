@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
 import { extractImages } from "@/lib/extract-images";
+import { fetchWithRetry } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 120;
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
       if (cursor) url.searchParams.set("cursor", cursor);
 
       apiCallsRapid++;
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithRetry(url.toString(), {
         headers: {
           "x-rapidapi-key": rapidapiKey,
           "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",

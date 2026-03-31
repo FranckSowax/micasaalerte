@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
 import { extractImages } from "@/lib/extract-images";
+import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 120;
@@ -39,7 +40,9 @@ export async function POST(request: Request) {
 
   const results = [];
 
-  for (const agent of agents) {
+  for (let ai = 0; ai < agents.length; ai++) {
+    const agent = agents[ai];
+    if (ai > 0) await sleep(2000);
     let postsFound = 0, postsNew = 0, postsDuplicate = 0, postsNotImmo = 0, postsNoText = 0, postsError = 0;
     let apiCallsRapid = 0, apiCallsKimi = 0;
     const postDetails: Record<string, unknown>[] = [];
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
         if (cursor) url.searchParams.set("cursor", cursor);
 
         apiCallsRapid++;
-        const response = await fetch(url.toString(), {
+        const response = await fetchWithRetry(url.toString(), {
           headers: {
             "x-rapidapi-key": rapidapiKey,
             "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",

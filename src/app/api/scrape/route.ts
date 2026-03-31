@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
 import { extractImages } from "@/lib/extract-images";
+import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 120; // Allow up to 2 min for scraping
@@ -51,7 +52,9 @@ export async function POST(request: Request) {
 
   const results = [];
 
-  for (const group of groups) {
+  for (let gi = 0; gi < groups.length; gi++) {
+    const group = groups[gi];
+    if (gi > 0) await sleep(2000); // 2s between groups to avoid 429
     // Create scrape log
     const { data: log } = await serviceClient
       .from("scrape_logs")
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
         if (cursor) url.searchParams.set("cursor", cursor);
 
         apiCallsRapid++;
-        const response = await fetch(url.toString(), {
+        const response = await fetchWithRetry(url.toString(), {
           headers: {
             "x-rapidapi-key": rapidapiKey,
             "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",
