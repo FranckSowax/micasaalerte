@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/scrape",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 */4 * * *"
     },
     {
       "path": "/api/cron/whatsapp",
-      "schedule": "15 */6 * * *"
+      "schedule": "15 */4 * * *"
+    },
+    {
+      "path": "/api/cron/demands",
+      "schedule": "30 */4 * * *"
     }
   ]
 }

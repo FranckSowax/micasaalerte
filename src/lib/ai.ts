@@ -76,3 +76,71 @@ export async function analyzePost(
 
   return JSON.parse(cleaned) as AIExtractionResult;
 }
+
+// Chatbot intent interpretation
+const CHATBOT_SYSTEM_PROMPT = `Tu es un assistant immobilier au Gabon. Un client t'envoie un message WhatsApp.
+Analyse son intention et réponds UNIQUEMENT avec un JSON strict (sans markdown) :
+
+{
+  "type": "search_more" | "modify_criteria" | "help" | "greeting" | "unknown",
+  "changes": {
+    "quartiers": ["string"] | null,
+    "prix_min": number | null,
+    "prix_max": number | null,
+    "type_offre": "location" | "vente" | "colocation" | null,
+    "type_bien": "appartement" | "maison" | "studio" | "villa" | "chambre" | "terrain" | null,
+    "nb_chambres_min": number | null
+  }
+}
+
+Règles :
+- "montre-moi des annonces", "encore", "plus", "autres annonces" → type: "search_more"
+- Mention de quartier, budget, chambres, type de bien → type: "modify_criteria" avec les changes
+- "aide", "help", "commandes" → type: "help"
+- "bonjour", "salut" → type: "greeting"
+- Sinon → type: "unknown"
+- "150k" = 150000, "1M" = 1000000
+- Ne mets dans changes QUE les champs mentionnés par le client`;
+
+export interface ChatbotIntent {
+  type: "search_more" | "modify_criteria" | "help" | "greeting" | "unknown";
+  changes: {
+    quartiers?: string[];
+    prix_min?: number;
+    prix_max?: number;
+    type_offre?: string;
+    type_bien?: string;
+    nb_chambres_min?: number;
+  };
+}
+
+export async function interpretClientMessage(
+  messageText: string,
+  currentDemand: unknown,
+  apiKey?: string
+): Promise<ChatbotIntent> {
+  const client = new OpenAI({
+    apiKey: apiKey || process.env.KIMI_API_KEY,
+    baseURL: "https://api.moonshot.ai/v1",
+  });
+
+  const context = currentDemand
+    ? `\nCritères actuels du client : ${JSON.stringify(currentDemand)}`
+    : "";
+
+  const response = await client.chat.completions.create({
+    model: "kimi-k2-0711-preview",
+    max_tokens: 256,
+    messages: [
+      { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+      { role: "user", content: `Message du client : "${messageText}"${context}` },
+    ],
+    temperature: 0.1,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) return { type: "unknown", changes: {} };
+
+  const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  return JSON.parse(cleaned) as ChatbotIntent;
+}

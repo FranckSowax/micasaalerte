@@ -350,3 +350,44 @@ export type WhatsAppChannel = Database["public"]["Tables"]["whatsapp_channels"][
 export type WhatsAppLog = Database["public"]["Tables"]["whatsapp_logs"]["Row"];
 export type ScrapeLog = Database["public"]["Tables"]["scrape_logs"]["Row"];
 export type DashboardStats = Database["public"]["Views"]["v_dashboard_stats"]["Row"];
+
+// Client demand types
+export interface ClientDemand {
+  id: string;
+  user_id: string;
+  client_phone: string;
+  client_name: string | null;
+  is_active: boolean;
+  filter_type_offre: string[];
+  filter_type_bien: string[];
+  filter_prix_min: number | null;
+  filter_prix_max: number | null;
+  filter_nb_chambres_min: number | null;
+  filter_quartiers: string[];
+  filter_ville: string;
+  filter_meuble: boolean | null;
+  exigences: string | null;
+  source: "chatbot" | "form" | "admin";
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatbotConversation {
+  id: string;
+  user_id: string;
+  client_phone: string;
+  conversation_state: string;
+  context: Record<string, unknown>;
+  last_interaction_at: string;
+  created_at: string;
+}
+
+export interface ClientDemandSend {
+  id: string;
+  demand_id: string;
+  annonce_id: string;
+  sent_at: string;
+  message_id: string | null;
+  status: "sent" | "delivered" | "read" | "failed";
+}

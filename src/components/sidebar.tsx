@@ -17,6 +17,7 @@ import {
   Database,
   UserCircle,
   History,
+  Users2,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/agents", label: "Agents immo", icon: UserCircle },
   { href: "/groupes/raw-posts", label: "Données brutes", icon: Database },
   { href: "/historique", label: "Historique", icon: History },
+  { href: "/clients", label: "Clients", icon: Users2 },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
