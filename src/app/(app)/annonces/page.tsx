@@ -13,7 +13,7 @@ import {
   getTypeBienLabel,
   getTypeOffreLabel,
 } from "@/lib/utils";
-import { Star, Archive, Loader2, Search, X, LayoutGrid, List, ImageIcon } from "lucide-react";
+import { Star, Archive, Loader2, Search, X, LayoutGrid, List, ImageIcon, Video } from "lucide-react";
 import Link from "next/link";
 import type { Annonce } from "@/types/database";
 
@@ -37,6 +37,7 @@ export default function AnnoncesPage() {
     date_from: "",
     date_to: "",
     has_images: "",
+    source: "",
   });
   const supabase = createClient();
 
@@ -62,11 +63,18 @@ export default function AnnoncesPage() {
     const { data } = await query;
     let filtered = data || [];
 
-    // Client-side filter for images (can't filter array length in Supabase)
+    // Client-side filter for images
     if (filters.has_images === "yes") {
       filtered = filtered.filter((a) => a.raw_images && a.raw_images.length > 0);
     } else if (filters.has_images === "no") {
       filtered = filtered.filter((a) => !a.raw_images || a.raw_images.length === 0);
+    }
+
+    // Client-side filter for source (TikTok vs Facebook)
+    if (filters.source === "tiktok") {
+      filtered = filtered.filter((a) => a.fb_post_id?.startsWith("tiktok_"));
+    } else if (filters.source === "facebook") {
+      filtered = filtered.filter((a) => !a.fb_post_id?.startsWith("tiktok_"));
     }
 
     setAnnonces(filtered);
@@ -83,7 +91,7 @@ export default function AnnoncesPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ type_offre: "", type_bien: "", status: "", prix_min: "", prix_max: "", quartier: "", search: "", date_from: "", date_to: "", has_images: "" });
+    setFilters({ type_offre: "", type_bien: "", status: "", prix_min: "", prix_max: "", quartier: "", search: "", date_from: "", date_to: "", has_images: "", source: "" });
   };
 
   const hasFilters = Object.values(filters).some(Boolean);
@@ -139,7 +147,7 @@ export default function AnnoncesPage() {
             <Input type="number" placeholder="Prix min" value={filters.prix_min} onChange={(e) => setFilters({ ...filters, prix_min: e.target.value })} />
             <Input type="number" placeholder="Prix max" value={filters.prix_max} onChange={(e) => setFilters({ ...filters, prix_max: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-3">
             <Input placeholder="Quartier" value={filters.quartier} onChange={(e) => setFilters({ ...filters, quartier: e.target.value })} />
             <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
               <option value="">Statut</option>
@@ -155,6 +163,11 @@ export default function AnnoncesPage() {
               <option value="">Photos</option>
               <option value="yes">Avec photos</option>
               <option value="no">Sans photos</option>
+            </select>
+            <select value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">Source</option>
+              <option value="facebook">Facebook</option>
+              <option value="tiktok">TikTok</option>
             </select>
           </div>
           {hasFilters && (
@@ -214,12 +227,15 @@ export default function AnnoncesPage() {
                         </div>
                       )}
                     </td>
-                    {/* Type offre */}
+                    {/* Source + Type offre */}
                     <td className="p-3">
                       <Link href={`/annonces/${a.id}`} className="hover:text-primary transition-colors">
-                        {a.type_offre ? (
-                          <Badge variant="outline" className="capitalize text-xs">{getTypeOffreLabel(a.type_offre)}</Badge>
-                        ) : <span className="text-muted-foreground">-</span>}
+                        <div className="flex items-center gap-1.5">
+                          {a.fb_post_id?.startsWith("tiktok_") && <Video className="h-3.5 w-3.5 text-pink-400 shrink-0" />}
+                          {a.type_offre ? (
+                            <Badge variant="outline" className="capitalize text-xs">{getTypeOffreLabel(a.type_offre)}</Badge>
+                          ) : <span className="text-muted-foreground">-</span>}
+                        </div>
                       </Link>
                     </td>
                     {/* Type bien */}
@@ -316,6 +332,9 @@ export default function AnnoncesPage() {
                 <CardContent className="p-4 flex flex-col h-full">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex gap-2 flex-wrap">
+                      {annonce.fb_post_id?.startsWith("tiktok_") && (
+                        <Badge className="bg-pink-500/20 text-pink-400 text-[10px]"><Video className="h-3 w-3 mr-1" />TikTok</Badge>
+                      )}
                       {annonce.type_offre && <Badge variant="outline" className="capitalize">{getTypeOffreLabel(annonce.type_offre)}</Badge>}
                       {annonce.type_bien && <Badge variant="secondary" className="capitalize">{getTypeBienLabel(annonce.type_bien)}</Badge>}
                     </div>

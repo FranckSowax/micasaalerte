@@ -227,7 +227,7 @@ export default async function AnnonceDetailPage({
             >
               <Button variant="outline" className="w-full">
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Voir sur Facebook
+                {annonce.fb_post_id?.startsWith("tiktok_") ? "Voir sur TikTok" : "Voir sur Facebook"}
               </Button>
             </a>
           )}
