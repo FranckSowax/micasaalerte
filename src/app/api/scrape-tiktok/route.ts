@@ -106,9 +106,11 @@ export async function POST(request: Request) {
       }
 
       const postsData = await postsRes.json();
-      const items = postsData?.itemList || postsData?.items || [];
-      const hasMore = postsData?.hasMore;
-      cursor = postsData?.cursor || 0;
+      // TikTok API can return items at root level or nested in data
+      const root = postsData?.data || postsData;
+      const items = root?.itemList || root?.items || [];
+      const hasMore = root?.hasMore;
+      cursor = root?.cursor || 0;
 
       if (!items.length) break;
 
