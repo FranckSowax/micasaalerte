@@ -1,6 +1,6 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
-import { extractImages } from "@/lib/extract-images";
+import { extractImages, fetchReshareImages } from "@/lib/extract-images";
 import { fetchWithRetry } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
@@ -92,7 +92,11 @@ export async function POST(request: Request) {
         const postUrl = post.url || post.post_url || null;
         const authorName = post.author?.name || memberName;
         const postedAt = post.timestamp ? new Date(post.timestamp * 1000).toISOString() : null;
-        const uniqueImages = extractImages(post);
+        let uniqueImages = extractImages(post);
+        if (uniqueImages.length === 0 && post.attached_post) {
+          const reshareImages = await fetchReshareImages(post, rapidapiKey);
+          if (reshareImages.length > 0) { uniqueImages = reshareImages; apiCallsRapid++; }
+        }
 
         if (!text || !postId) {
           postsNoText++;
