@@ -46,7 +46,7 @@ export default function AnnoncesPage() {
       .from("annonces")
       .select("*")
       .eq("ai_is_real_estate", true)
-      .order("created_at", { ascending: false })
+      .order("fb_posted_at", { ascending: false, nullsFirst: false })
       .limit(200);
 
     if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
@@ -194,7 +194,7 @@ export default function AnnoncesPage() {
                   <th className="text-center p-3 font-medium text-muted-foreground hidden lg:table-cell">Meublé</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden xl:table-cell">Contact</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Statut</th>
-                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Publié le</th>
                   <th className="text-center p-3 font-medium text-muted-foreground w-20">Actions</th>
                 </tr>
               </thead>
@@ -266,9 +266,9 @@ export default function AnnoncesPage() {
                     <td className="p-3 text-center">
                       <Badge className={`text-[10px] ${getStatusColor(a.status)}`}>{STATUS_LABELS[a.status] || a.status}</Badge>
                     </td>
-                    {/* Date */}
+                    {/* Date publication FB */}
                     <td className="p-3 hidden lg:table-cell">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(a.created_at)}</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(a.fb_posted_at || a.created_at)}</span>
                     </td>
                     {/* Actions */}
                     <td className="p-3">
@@ -346,7 +346,10 @@ export default function AnnoncesPage() {
                   )}
 
                   <div className="flex items-center justify-between mt-auto pt-2 border-t border-border">
-                    <span className="text-xs text-muted-foreground">{formatDate(annonce.created_at)}</span>
+                    <div className="text-xs text-muted-foreground">
+                      <span>{formatDate(annonce.fb_posted_at || annonce.created_at)}</span>
+                      {annonce.fb_author_name && <span className="ml-1">| {annonce.fb_author_name}</span>}
+                    </div>
                     <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => updateStatus(annonce.id, annonce.status === "favorite" ? "new" : "favorite")}>
                         <Star className={`h-3.5 w-3.5 ${annonce.status === "favorite" ? "fill-yellow-400 text-yellow-400" : ""}`} />
