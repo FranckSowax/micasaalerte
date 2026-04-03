@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { FacebookGroup } from "@/types/database";
 
@@ -54,6 +54,7 @@ export default function GroupesPage() {
   const [scrapeResults, setScrapeResults] = useState<ScrapeResult[] | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; groupName: string } | null>(null);
+  const cancelRef = useRef(false);
   const supabase = createClient();
 
   const fetchGroups = async () => {
@@ -160,10 +161,12 @@ export default function GroupesPage() {
     }
 
     setScraping("all");
+    cancelRef.current = false;
     const allResults: ScrapeResult[] = [];
     let completedCount = 0;
 
     for (const group of activeGroups) {
+      if (cancelRef.current) break;
       setScrapeProgress({ current: completedCount + 1, total: activeGroups.length, groupName: group.group_name });
       setScraping(group.id);
 
@@ -195,12 +198,13 @@ export default function GroupesPage() {
       setError(errors.map(r => `${r.group}: ${r.error}`).join(" | "));
     }
 
-    const parts = [`${activeGroups.length} groupes`, `${totalFound} post(s)`];
+    const cancelled = cancelRef.current;
+    const parts = [`${completedCount}/${activeGroups.length} groupes`, `${totalFound} post(s)`];
     if (totalNew > 0) parts.push(`${totalNew} annonce(s) ajoutée(s)`);
     if (totalNotImmo > 0) parts.push(`${totalNotImmo} pas immo`);
     if (totalDup > 0) parts.push(`${totalDup} doublon(s)`);
     if (totalErr > 0) parts.push(`${totalErr} erreur(s)`);
-    setSuccess(`Collecte terminée ! ${parts.join(", ")}.`);
+    setSuccess(`${cancelled ? "Collecte arrêtée" : "Collecte terminée"} ! ${parts.join(", ")}.`);
 
     fetchGroups();
     setScraping(null);
@@ -214,13 +218,20 @@ export default function GroupesPage() {
           <h1 className="text-3xl font-bold">Groupes Facebook</h1>
           <p className="text-muted-foreground mt-1">Gérez les groupes à surveiller</p>
         </div>
-        <Button onClick={() => handleScrape()} disabled={!!scraping}>
-          {scraping ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
-          ) : (
-            <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+        <div className="flex gap-2">
+          {scraping && (
+            <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+              <Square className="h-4 w-4 mr-2" /> Arrêter
+            </Button>
           )}
-        </Button>
+          <Button onClick={() => handleScrape()} disabled={!!scraping}>
+            {scraping ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
+            ) : (
+              <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Progress bar */}

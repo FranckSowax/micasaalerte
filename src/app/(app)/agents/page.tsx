@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, UserCircle } from "lucide-react";
+import { Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, UserCircle, Square } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 interface AgentProfile {
@@ -63,6 +63,7 @@ export default function AgentsPage() {
   const [scrapeResults, setScrapeResults] = useState<ScrapeResult[] | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; agentName: string } | null>(null);
+  const cancelRef = useRef(false);
   const supabase = createClient();
 
   const fetchAgents = async () => {
@@ -161,10 +162,12 @@ export default function AgentsPage() {
     }
 
     setScraping("all");
+    cancelRef.current = false;
     const allResults: ScrapeResult[] = [];
     let completedCount = 0;
 
     for (const agent of activeAgents) {
+      if (cancelRef.current) break;
       setScrapeProgress({ current: completedCount + 1, total: activeAgents.length, agentName: agent.profile_name });
       setScraping(agent.id);
 
@@ -192,12 +195,13 @@ export default function AgentsPage() {
 
     if (errors.length > 0) setError(errors.map(r => `${r.agent}: ${r.error}`).join(" | "));
 
-    const parts = [`${activeAgents.length} agents`, `${totalFound} post(s)`];
+    const cancelled = cancelRef.current;
+    const parts = [`${completedCount}/${activeAgents.length} agents`, `${totalFound} post(s)`];
     if (totalNew > 0) parts.push(`${totalNew} annonce(s) ajoutée(s)`);
     if (totalNotImmo > 0) parts.push(`${totalNotImmo} pas immo`);
     if (totalDup > 0) parts.push(`${totalDup} doublon(s)`);
     if (totalErr > 0) parts.push(`${totalErr} erreur(s)`);
-    setSuccess(`Collecte terminée ! ${parts.join(", ")}.`);
+    setSuccess(`${cancelled ? "Collecte arrêtée" : "Collecte terminée"} ! ${parts.join(", ")}.`);
 
     fetchAgents();
     setScraping(null);
@@ -211,13 +215,20 @@ export default function AgentsPage() {
           <h1 className="text-3xl font-bold">Agents immobiliers</h1>
           <p className="text-muted-foreground mt-1">Surveillez les publications des profils Facebook d&apos;agents</p>
         </div>
-        <Button onClick={() => handleScrape()} disabled={!!scraping}>
-          {scraping ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
-          ) : (
-            <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+        <div className="flex gap-2">
+          {scraping && (
+            <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+              <Square className="h-4 w-4 mr-2" /> Arrêter
+            </Button>
           )}
-        </Button>
+          <Button onClick={() => handleScrape()} disabled={!!scraping}>
+            {scraping ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
+            ) : (
+              <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Progress bar */}

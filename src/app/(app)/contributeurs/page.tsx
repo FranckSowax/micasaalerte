@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle,
-  ChevronDown, ChevronUp, UserCheck,
+  ChevronDown, ChevronUp, UserCheck, Square,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { Contributor } from "@/types/database";
@@ -56,6 +56,7 @@ export default function ContributeursPage() {
   const [scrapeResults, setScrapeResults] = useState<ScrapeResult[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const cancelRef = useRef(false);
   const supabase = createClient();
 
   const fetchContributors = async () => {
@@ -145,9 +146,11 @@ export default function ContributeursPage() {
     if (!active.length) { setError("Aucun contributeur actif"); return; }
 
     setScraping("all");
+    cancelRef.current = false;
     const allResults: ScrapeResult[] = [];
 
     for (let i = 0; i < active.length; i++) {
+      if (cancelRef.current) break;
       const c = active[i];
       setScrapeProgress({ current: i + 1, total: active.length, name: c.member_name });
       setScraping(c.id);
@@ -168,9 +171,11 @@ export default function ContributeursPage() {
     const errors = allResults.filter(r => r.error);
     if (errors.length > 0) setError(errors.map(r => `${r.contributor}: ${r.error}`).join(" | "));
 
-    const parts = [`${active.length} contributeurs`, `${totalFound} posts de membres`];
+    const cancelled = cancelRef.current;
+    const done = allResults.length;
+    const parts = [`${done}/${active.length} contributeurs`, `${totalFound} posts de membres`];
     if (totalNew > 0) parts.push(`${totalNew} annonce(s)`);
-    setSuccess(`Collecte terminée ! ${parts.join(", ")}.`);
+    setSuccess(`${cancelled ? "Collecte arrêtée" : "Collecte terminée"} ! ${parts.join(", ")}.`);
 
     fetchContributors();
     setScraping(null);
@@ -184,13 +189,20 @@ export default function ContributeursPage() {
           <h1 className="text-3xl font-bold">Contributeurs</h1>
           <p className="text-muted-foreground mt-1">Scrapez les posts d&apos;un membre spécifique dans un groupe</p>
         </div>
-        <Button onClick={() => handleScrape()} disabled={!!scraping}>
-          {scraping ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
-          ) : (
-            <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+        <div className="flex gap-2">
+          {scraping && (
+            <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+              <Square className="h-4 w-4 mr-2" /> Arrêter
+            </Button>
           )}
-        </Button>
+          <Button onClick={() => handleScrape()} disabled={!!scraping}>
+            {scraping ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
+            ) : (
+              <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Progress */}
