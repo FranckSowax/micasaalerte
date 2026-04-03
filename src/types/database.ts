@@ -383,6 +383,22 @@ export interface ChatbotConversation {
   created_at: string;
 }
 
+export interface Contributor {
+  id: string;
+  user_id: string;
+  group_id: string;
+  group_name: string | null;
+  member_id: string;
+  member_name: string;
+  member_url: string;
+  is_active: boolean;
+  last_scraped_at: string | null;
+  posts_found: number;
+  annonces_created: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ClientDemandSend {
   id: string;
   demand_id: string;
