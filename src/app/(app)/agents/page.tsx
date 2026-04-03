@@ -62,6 +62,7 @@ export default function AgentsPage() {
   const [success, setSuccess] = useState("");
   const [scrapeResults, setScrapeResults] = useState<ScrapeResult[] | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number; agentName: string } | null>(null);
   const [memberUrl, setMemberUrl] = useState("");
   const [memberScraping, setMemberScraping] = useState(false);
   const [memberResult, setMemberResult] = useState<Record<string, unknown> | null>(null);
@@ -117,9 +118,7 @@ export default function AgentsPage() {
     fetchAgents();
   };
 
-  const handleScrape = async (agentId?: string) => {
-    setScraping(agentId || "all");
-    setError(""); setSuccess(""); setScrapeResults(null);
+  const scrapeSingleAgent = async (agentId: string): Promise<ScrapeResult | null> => {
     try {
       const res = await fetch("/api/scrape-profiles", {
         method: "POST",
@@ -127,33 +126,85 @@ export default function AgentsPage() {
         body: JSON.stringify({ agentId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Erreur lors de la collecte");
-      } else {
-        const results: ScrapeResult[] = data.results || [];
-        setScrapeResults(results);
-
-        const totalNew = results.reduce((s, r) => s + (r.postsNew || 0), 0);
-        const totalFound = results.reduce((s, r) => s + (r.postsFound || 0), 0);
-        const totalNotImmo = results.reduce((s, r) => s + (r.postsNotImmo || 0), 0);
-        const totalDup = results.reduce((s, r) => s + (r.postsDuplicate || 0), 0);
-        const totalErr = results.reduce((s, r) => s + (r.postsError || 0), 0);
-        const errors = results.filter(r => r.error);
-
-        if (errors.length > 0) setError(errors.map(r => `${r.agent}: ${r.error}`).join(" | "));
-
-        const parts = [`${totalFound} post(s) trouvé(s)`];
-        if (totalNew > 0) parts.push(`${totalNew} annonce(s) ajoutée(s)`);
-        if (totalNotImmo > 0) parts.push(`${totalNotImmo} non-immobilier`);
-        if (totalDup > 0) parts.push(`${totalDup} doublon(s)`);
-        if (totalErr > 0) parts.push(`${totalErr} erreur(s) IA`);
-        setSuccess(`Collecte terminée ! ${parts.join(", ")}.`);
-        fetchAgents();
-      }
+      if (!res.ok) return { agent: agentId, error: data.error || "Erreur" };
+      return (data.results || [])[0] || null;
     } catch {
-      setError("Erreur de connexion au serveur");
+      return { agent: agentId, error: "Erreur de connexion" };
     }
+  };
+
+  const handleScrape = async (agentId?: string) => {
+    setError(""); setSuccess(""); setScrapeResults(null);
+
+    // Single agent
+    if (agentId) {
+      setScraping(agentId);
+      const result = await scrapeSingleAgent(agentId);
+      if (result) {
+        setScrapeResults([result]);
+        if (result.error) {
+          setError(`${result.agent}: ${result.error}`);
+        } else {
+          const parts = [`${result.postsFound || 0} post(s)`];
+          if (result.postsNew) parts.push(`${result.postsNew} annonce(s)`);
+          if (result.postsDuplicate) parts.push(`${result.postsDuplicate} doublon(s)`);
+          setSuccess(`${result.agent} : ${parts.join(", ")}`);
+        }
+      }
+      fetchAgents();
+      setScraping(null);
+      return;
+    }
+
+    // ALL agents: one by one with progress
+    const activeAgents = agents.filter(a => a.is_active);
+    if (!activeAgents.length) {
+      setError("Aucun profil agent actif");
+      return;
+    }
+
+    setScraping("all");
+    const allResults: ScrapeResult[] = [];
+    let completedCount = 0;
+
+    for (const agent of activeAgents) {
+      setScrapeProgress({ current: completedCount + 1, total: activeAgents.length, agentName: agent.profile_name });
+      setScraping(agent.id);
+
+      const result = await scrapeSingleAgent(agent.id);
+      completedCount++;
+
+      if (result) {
+        allResults.push(result);
+        setScrapeResults([...allResults]);
+      }
+
+      if (completedCount < activeAgents.length) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+
+    setScrapeResults(allResults);
+
+    const totalNew = allResults.reduce((s, r) => s + (r.postsNew || 0), 0);
+    const totalFound = allResults.reduce((s, r) => s + (r.postsFound || 0), 0);
+    const totalNotImmo = allResults.reduce((s, r) => s + (r.postsNotImmo || 0), 0);
+    const totalDup = allResults.reduce((s, r) => s + (r.postsDuplicate || 0), 0);
+    const totalErr = allResults.reduce((s, r) => s + (r.postsError || 0), 0);
+    const errors = allResults.filter(r => r.error);
+
+    if (errors.length > 0) setError(errors.map(r => `${r.agent}: ${r.error}`).join(" | "));
+
+    const parts = [`${activeAgents.length} agents`, `${totalFound} post(s)`];
+    if (totalNew > 0) parts.push(`${totalNew} annonce(s) ajoutée(s)`);
+    if (totalNotImmo > 0) parts.push(`${totalNotImmo} pas immo`);
+    if (totalDup > 0) parts.push(`${totalDup} doublon(s)`);
+    if (totalErr > 0) parts.push(`${totalErr} erreur(s)`);
+    setSuccess(`Collecte terminée ! ${parts.join(", ")}.`);
+
+    fetchAgents();
     setScraping(null);
+    setScrapeProgress(null);
   };
 
   const parseMemberUrl = (url: string) => {
@@ -205,13 +256,35 @@ export default function AgentsPage() {
           <p className="text-muted-foreground mt-1">Surveillez les publications des profils Facebook d&apos;agents</p>
         </div>
         <Button onClick={() => handleScrape()} disabled={!!scraping}>
-          {scraping === "all" ? (
+          {scraping ? (
             <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
           ) : (
             <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
           )}
         </Button>
       </div>
+
+      {/* Progress bar */}
+      {scrapeProgress && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">
+                Agent {scrapeProgress.current}/{scrapeProgress.total} : {scrapeProgress.agentName}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {Math.round((scrapeProgress.current / scrapeProgress.total) * 100)}%
+              </span>
+            </div>
+            <div className="w-full bg-secondary rounded-full h-2">
+              <div
+                className="bg-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: `${((scrapeProgress.current - 0.5) / scrapeProgress.total) * 100}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {error && (
         <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm flex items-start gap-2">
