@@ -399,6 +399,20 @@ export interface Contributor {
   updated_at: string;
 }
 
+export interface TikTokAccount {
+  id: string;
+  user_id: string;
+  tiktok_handle: string;
+  tiktok_url: string;
+  sec_uid: string | null;
+  is_active: boolean;
+  last_scraped_at: string | null;
+  posts_found: number;
+  annonces_created: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ClientDemandSend {
   id: string;
   demand_id: string;
