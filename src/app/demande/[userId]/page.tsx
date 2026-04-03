@@ -1,23 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Home, Loader2, CheckCircle2 } from "lucide-react";
+import { Home, Loader2, CheckCircle2, MapPin, X } from "lucide-react";
 
 const TYPE_OFFRE = ["location", "vente", "colocation"];
 const TYPE_BIEN = ["appartement", "maison", "studio", "villa", "chambre", "terrain"];
-const QUARTIERS = [
-  "Angondjé", "Okala", "Nzeng-Ayong", "Owendo", "Akanda",
-  "Alibandeng", "Mindoubé", "PK", "Sotega", "Glass",
-  "Montagne Sainte", "Batterie IV", "Charbonnages", "Louis",
-];
+const MAX_QUARTIERS = 3;
 
 export default function DemandePage({ params }: { params: { userId: string } }) {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [quartiersOptions, setQuartiersOptions] = useState<{ name: string; count: number }[]>([]);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     client_name: "",
@@ -32,13 +29,23 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
     exigences: "",
   });
 
+  useEffect(() => {
+    fetch(`/api/quartiers?userId=${params.userId}`)
+      .then(r => r.json())
+      .then(data => setQuartiersOptions(data))
+      .catch(() => {});
+  }, [params.userId]);
+
   const toggleArray = (key: "type_offre" | "type_bien" | "quartiers", value: string) => {
-    setForm(prev => ({
-      ...prev,
-      [key]: prev[key].includes(value)
-        ? prev[key].filter(v => v !== value)
-        : [...prev[key], value],
-    }));
+    setForm(prev => {
+      const current = prev[key];
+      if (current.includes(value)) {
+        return { ...prev, [key]: current.filter(v => v !== value) };
+      }
+      // Max 3 quartiers
+      if (key === "quartiers" && current.length >= MAX_QUARTIERS) return prev;
+      return { ...prev, [key]: [...current, value] };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -188,18 +195,49 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
           {/* Quartiers */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Quartiers</CardTitle>
-              <CardDescription>Sélectionnez les quartiers qui vous intéressent (ou laissez vide pour tous)</CardDescription>
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Quartiers</CardTitle>
+              </div>
+              <CardDescription>
+                Sélectionnez jusqu&apos;à {MAX_QUARTIERS} quartiers ({form.quartiers.length}/{MAX_QUARTIERS})
+                {form.quartiers.length === 0 && " - ou laissez vide pour tous"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {QUARTIERS.map(q => (
-                  <Badge key={q} variant={form.quartiers.includes(q) ? "default" : "outline"}
-                    className="cursor-pointer text-sm py-1.5 px-3" onClick={() => toggleArray("quartiers", q)}>
-                    {q}
-                  </Badge>
-                ))}
-              </div>
+              {quartiersOptions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {quartiersOptions.map(q => {
+                    const selected = form.quartiers.includes(q.name);
+                    const disabled = !selected && form.quartiers.length >= MAX_QUARTIERS;
+                    return (
+                      <Badge
+                        key={q.name}
+                        variant={selected ? "default" : "outline"}
+                        className={`text-sm py-1.5 px-3 ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                        onClick={() => !disabled && toggleArray("quartiers", q.name)}
+                      >
+                        {q.name}
+                        <span className="ml-1 text-[10px] opacity-60">({q.count})</span>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Chargement des quartiers...</p>
+              )}
+              {form.quartiers.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-1">Sélectionnés :</p>
+                  <div className="flex gap-2">
+                    {form.quartiers.map(q => (
+                      <Badge key={q} className="cursor-pointer" onClick={() => toggleArray("quartiers", q)}>
+                        {q} <X className="h-3 w-3 ml-1" />
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
