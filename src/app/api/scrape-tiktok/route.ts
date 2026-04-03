@@ -77,10 +77,19 @@ export async function POST(request: Request) {
     }
 
     // Step 2: Get user posts (paginated)
+    // First scrape: only videos from last 7 days
+    // Subsequent scrapes: only videos since last scrape
+    const lastScrapedAt = (account as Record<string, unknown>).last_scraped_at as string | null;
+    const cutoffDate = lastScrapedAt
+      ? new Date(lastScrapedAt)
+      : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+
     let cursor = 0;
     const maxPages = 3;
+    let reachedOldPosts = false;
 
     for (let page = 0; page < maxPages; page++) {
+      if (reachedOldPosts) break;
       apiCallsRapid++;
       const postsRes = await fetchWithRetry(
         `https://tiktok-api23.p.rapidapi.com/api/user/posts?secUid=${encodeURIComponent(secUid)}&count=35&cursor=${cursor}`,
@@ -104,12 +113,18 @@ export async function POST(request: Request) {
       if (!items.length) break;
 
       for (const item of items) {
-        postsFound++;
-
         const videoId = item.id || String(item.video?.id || "");
         const desc = item.desc || "";
         const createTime = item.createTime ? new Date(item.createTime * 1000).toISOString() : null;
         const author = item.author?.uniqueId || handle;
+
+        // Skip videos older than cutoff (posts are sorted newest first)
+        if (item.createTime && new Date(item.createTime * 1000) < cutoffDate) {
+          reachedOldPosts = true;
+          break;
+        }
+
+        postsFound++;
 
         // Extract images (video thumbnails)
         const images: string[] = [];
