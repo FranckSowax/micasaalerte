@@ -33,9 +33,23 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const protectedRoutes = ["/dashboard", "/annonces", "/groupes", "/whatsapp", "/settings"];
-  const isProtected = protectedRoutes.some((route) =>
-    request.nextUrl.pathname.startsWith(route)
+  // Doit couvrir toutes les pages du groupe (app) — à compléter à chaque nouvelle page.
+  const protectedRoutes = [
+    "/dashboard",
+    "/annonces",
+    "/groupes",
+    "/agents",
+    "/contributeurs",
+    "/tiktok",
+    "/historique",
+    "/clients",
+    "/whatsapp",
+    "/settings",
+  ];
+  const { pathname } = request.nextUrl;
+  // Comparaison par segment : "/clients" ne doit pas protéger un futur "/clients-publics".
+  const isProtected = protectedRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
   if (isProtected && !user) {

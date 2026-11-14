@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { handleIncomingMessage } from "@/lib/chatbot";
+import { safeEqual } from "@/lib/cron-auth";
 import { NextResponse } from "next/server";
 import { createHmac } from "crypto";
 
@@ -13,7 +14,8 @@ export async function GET(request: Request) {
 
   const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
-  if (mode === "subscribe" && token === verifyToken) {
+  // Sans jeton configuré, on refuse (sinon un jeton absent des deux côtés passerait).
+  if (mode === "subscribe" && verifyToken && token && safeEqual(token, verifyToken)) {
     return new Response(challenge, { status: 200 });
   }
 
@@ -22,27 +24,34 @@ export async function GET(request: Request) {
 
 // POST: Incoming WhatsApp messages
 export async function POST(request: Request) {
-  // Validate signature
+  // La signature Meta est obligatoire : sans secret configuré ou sans en-tête,
+  // n'importe qui pourrait injecter de faux messages clients.
   const appSecret = process.env.WHATSAPP_APP_SECRET;
-  if (appSecret) {
-    const signature = request.headers.get("x-hub-signature-256");
-    const body = await request.text();
-
-    if (signature) {
-      const expectedSig = "sha256=" + createHmac("sha256", appSecret).update(body).digest("hex");
-      if (signature !== expectedSig) {
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
-    }
-
-    // Parse body from text since we already consumed it
-    const payload = JSON.parse(body);
-    await processWebhook(payload);
-  } else {
-    // No app secret configured, skip validation
-    const payload = await request.json();
-    await processWebhook(payload);
+  if (!appSecret) {
+    console.error("WHATSAPP_APP_SECRET non configuré : webhook refusé");
+    return NextResponse.json({ error: "Webhook non configuré" }, { status: 503 });
   }
+
+  const signature = request.headers.get("x-hub-signature-256");
+  if (!signature) {
+    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+  }
+
+  // La signature porte sur le corps brut : on le lit en texte avant de le parser.
+  const body = await request.text();
+  const expectedSig = "sha256=" + createHmac("sha256", appSecret).update(body).digest("hex");
+  if (!safeEqual(signature, expectedSig)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  await processWebhook(payload);
 
   return new Response("OK", { status: 200 });
 }

@@ -1,11 +1,16 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+// Appelée en POST par scripts/run-cron.mjs (service cron Railway) ; GET accepté aussi pour un déclenchement manuel.
+export const dynamic = "force-dynamic";
+export const GET = handleCron;
+export const POST = handleCron;
+
+async function handleCron(request: Request) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
