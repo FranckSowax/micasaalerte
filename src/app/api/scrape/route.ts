@@ -177,7 +177,7 @@ export async function POST(request: Request) {
           // Analyze with AI
           try {
             apiCallsKimi++;
-            const analysis = await analyzePost(text, kimiKey, group.group_name);
+            const analysis = await analyzePost(text, kimiKey);
 
             // Update raw post with AI result
             await serviceClient.from("raw_posts").update({

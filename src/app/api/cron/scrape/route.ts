@@ -128,7 +128,7 @@ async function handleCron(request: Request) {
         }
 
         try {
-          const analysis = await analyzePost(text, kimiKey, group.group_name);
+          const analysis = await analyzePost(text, kimiKey);
 
           if (rawPostId) {
             await serviceClient

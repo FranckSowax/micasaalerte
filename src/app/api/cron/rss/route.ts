@@ -59,7 +59,7 @@ async function handleCron(request: Request) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
-  const stats = { posts: 0, newAnnonces: 0, notRealEstate: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  const stats = { posts: 0, newAnnonces: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
   const unknownSources: Record<string, number> = {};
   const touchedAgents = new Set<string>();
   const feeds: { items: number; spanMinutes: number | null; possibleGap: boolean; error?: string }[] = [];
@@ -130,7 +130,6 @@ async function handleCron(request: Request) {
           userId: source.userId,
           sourceType: post.kind,
           sourceRowId: source.id,
-          sourceName: source.name,
           authorId: post.kind === "profile" ? post.sourceId : null,
           postId: post.postId,
           url: post.url,
@@ -151,6 +150,7 @@ async function handleCron(request: Request) {
           analyses++;
           if (status === "new_annonce") stats.newAnnonces++;
           else if (status === "not_real_estate") stats.notRealEstate++;
+          else if (status === "out_of_area") stats.outOfArea++;
           else stats.aiErrors++;
         }
       }

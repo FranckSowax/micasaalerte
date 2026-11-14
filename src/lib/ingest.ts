@@ -4,7 +4,7 @@ import type { createServiceClient } from "./supabase/server";
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
-export type IngestStatus = "known" | "not_real_estate" | "new_annonce" | "ai_error";
+export type IngestStatus = "known" | "not_real_estate" | "out_of_area" | "new_annonce" | "ai_error";
 
 export interface IngestInput {
   userId: string;
@@ -12,8 +12,6 @@ export interface IngestInput {
   sourceType: "group" | "profile";
   /** Identifiant (uuid) de la ligne facebook_groups ou agent_profiles. */
   sourceRowId: string;
-  /** Nom de la source, transmis à l'IA comme contexte fiable. */
-  sourceName: string;
   /** Identifiant Facebook de l'auteur, connu pour un profil d'agent. */
   authorId?: string | null;
   postId: string;
@@ -79,7 +77,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
   }
 
   try {
-    const analysis = await analyzePost(input.text, input.legacyAiKey, input.sourceName);
+    const analysis = await analyzePost(input.text, input.legacyAiKey);
 
     if (rawPostId) {
       await client
@@ -92,6 +90,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
         .eq("id", rawPostId);
     }
 
+    if (analysis.details.hors_gabon) return "out_of_area";
     if (!analysis.is_real_estate) return "not_real_estate";
 
     const { data: annonce } = await client

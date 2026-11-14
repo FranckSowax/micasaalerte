@@ -22,7 +22,12 @@ N'invente jamais un prix, un quartier, une ville, une adresse ou un contact, mê
 Ne déduis pas la ville d'un quartier. N'utilise aucune connaissance extérieure au texte.
 
 Champs :
-- est_immobilier (boolean) : le texte propose-t-il ou recherche-t-il un bien immobilier ?
+- est_immobilier (boolean) : le TEXTE LUI-MÊME propose-t-il ou recherche-t-il un bien immobilier
+  (logement, terrain, local) ? false pour une voiture, un emploi, une formation, un vêtement, un
+  fonds de commerce sans local, une vidéo ou une publicité sans rapport, même publiée dans un groupe immobilier.
+- hors_gabon (boolean) : true seulement si le texte situe explicitement le bien hors du Gabon
+  (ex. Abidjan, Douala, Dakar au Sénégal). Attention : Libreville a des quartiers nommés Dakar, London,
+  Petit Paris, Plaine Niger, Toulon — ce ne sont pas des lieux étrangers. Dans le doute, false.
 - transaction : "location" | "location_meublee" | "vente" | "colocation" | "recherche" | "inconnu"
   ("recherche" = l'auteur CHERCHE un bien ; "inconnu" si ce n'est pas dit)
 - type : "appartement" | "maison" | "villa" | "studio" | "chambre" | "terrain" | "bureau" | "commerce" | null
@@ -39,6 +44,8 @@ Champs :
 - confiance : objet { champ: nombre entre 0 et 1 } pour transaction, type, prix, ville, quartier
 - extraits : objet { champ: "passage recopié MOT POUR MOT du texte" } pour chaque champ non nul parmi
   prix, charges, caution, ville, quartier, adresse. Un champ sans extrait exact sera rejeté.
+  Ajoute aussi extraits.immobilier : le passage du texte qui montre qu'il s'agit d'un bien immobilier
+  (obligatoire si est_immobilier est true), et extraits.hors_gabon si hors_gabon est true.
 
 N'extrais PAS les téléphones ni les e-mails : ils sont relevés séparément.`;
 
@@ -67,6 +74,7 @@ const record = <T extends z.ZodTypeAny>(value: T) =>
 // WHY: schéma tolérant — un champ mal formé devient null au lieu de faire échouer toute la fiche.
 const RawExtractionSchema = z.object({
   est_immobilier: z.preprocess((v) => v === true, z.boolean()),
+  hors_gabon: z.preprocess((v) => v === true, z.boolean()),
   transaction: oneOf(TRANSACTIONS),
   type: oneOf(TYPES_BIEN),
   prix: num,
@@ -98,6 +106,8 @@ const RawExtractionSchema = z.object({
 
 export interface Extraction {
   est_immobilier: boolean;
+  /** Le texte situe explicitement le bien hors du Gabon : l'annonce est hors périmètre. */
+  hors_gabon: boolean;
   transaction: (typeof TRANSACTIONS)[number];
   type: (typeof TYPES_BIEN)[number] | null;
   prix: number | null;
@@ -134,6 +144,9 @@ export interface Extraction {
 }
 
 const MAX_MONTANT = 100_000_000_000;
+// Villes étrangères sans homonyme parmi les quartiers gabonais. Volontairement courte :
+// Dakar, London, Paris, Niger ou Toulon sont aussi des quartiers de Libreville.
+const VILLES_ETRANGERES = ["abidjan", "cote d ivoire", "douala", "yaounde", "brazzaville", "kinshasa", "cotonou", "lome", "bamako", "ouagadougou", "casablanca"];
 const SEUIL_CONFIANCE = 0.5;
 
 /** Minuscules, sans accents ni ponctuation superflue : sert à comparer extrait et source. */
@@ -163,15 +176,20 @@ function countOrNull(n: number | null): number | null {
  * Valide la réponse brute de l'IA et applique les garde-fous.
  *
  * @param raw     objet JSON renvoyé par le modèle
- * @param source  texte original de l'annonce
- * @param context texte d'appoint fiable (nom du groupe source), admis comme justification
+ * @param source  texte original de l'annonce — seule preuve admise. Le nom du groupe ou du compte
+ *                où elle a été publiée n'en fait pas partie : un groupe « Maison à louer » contient
+ *                aussi des publicités sans rapport.
  *
  * @example
  * sanitizeExtraction({ est_immobilier: true, prix: 150000, extraits: { prix: "150k" } }, "Studio 150k Okala")
  */
-export function sanitizeExtraction(raw: unknown, source: string, context = ""): Extraction {
+export function sanitizeExtraction(raw: unknown, source: string): Extraction {
   const parsed = RawExtractionSchema.parse(raw && typeof raw === "object" ? raw : {});
-  const haystack = ` ${normalizeText(`${source} ${context}`)} `;
+  const haystack = ` ${normalizeText(source)} `;
+  const proven = (extrait: string | null | undefined): boolean => {
+    const needle = extrait ? normalizeText(extrait) : "";
+    return needle.length >= 2 && haystack.includes(` ${needle} `);
+  };
   const rejets: string[] = [];
   const extraits: Record<string, string> = {};
   const confiance: Record<string, number> = {};
@@ -193,9 +211,8 @@ export function sanitizeExtraction(raw: unknown, source: string, context = ""): 
       continue;
     }
     const extrait = parsed.extraits[champ];
-    const needle = extrait ? normalizeText(extrait) : "";
     // L'extrait doit exister tel quel dans la source : c'est la preuve que la valeur n'est pas inventée.
-    if (needle.length >= 2 && haystack.includes(` ${needle} `)) {
+    if (proven(extrait)) {
       extraits[champ] = extrait as string;
     } else {
       values[champ] = null;
@@ -203,6 +220,15 @@ export function sanitizeExtraction(raw: unknown, source: string, context = ""): 
       rejets.push(champ);
     }
   }
+
+  // Une publication n'est de l'immobilier que si un passage de son propre texte le montre.
+  const estImmobilier = parsed.est_immobilier && proven(parsed.extraits.immobilier);
+  if (parsed.est_immobilier && !estImmobilier) rejets.push("immobilier");
+  if (estImmobilier) extraits.immobilier = parsed.extraits.immobilier as string;
+
+  const horsGabon =
+    (parsed.hors_gabon && proven(parsed.extraits.hors_gabon)) ||
+    VILLES_ETRANGERES.some((v) => haystack.includes(` ${v} `));
 
   const contacts = extractContacts(source);
   const transaction = parsed.transaction ?? "inconnu";
@@ -215,7 +241,8 @@ export function sanitizeExtraction(raw: unknown, source: string, context = ""): 
   if (parsed.type === null) aVerifier.push("type");
 
   return {
-    est_immobilier: parsed.est_immobilier,
+    est_immobilier: estImmobilier,
+    hors_gabon: horsGabon,
     transaction,
     type: parsed.type,
     prix,
@@ -251,6 +278,7 @@ export function sanitizeExtraction(raw: unknown, source: string, context = ""): 
 /** Détails rangés dans `annonces.details` (JSON) : tout ce qui n'a pas de colonne dédiée. */
 export interface AnnonceDetails {
   version: number;
+  hors_gabon: boolean;
   transaction: string;
   periodicite: string | null;
   charges: number | null;
@@ -271,6 +299,7 @@ export interface AnnonceDetails {
 export function toAnnonceDetails(e: Extraction): AnnonceDetails {
   return {
     version: 1,
+    hors_gabon: e.hors_gabon,
     transaction: e.transaction,
     periodicite: e.periodicite,
     charges: e.charges,

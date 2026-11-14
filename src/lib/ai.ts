@@ -112,15 +112,11 @@ function globalConfidence(e: Extraction): number {
  * Les contacts viennent d'expressions régulières, jamais du modèle ; tout champ
  * important non justifié par un extrait de la source est remis à null.
  *
- * @param context nom du groupe ou du compte source : admis comme preuve (ex. pour la ville)
+ * Un bien situé hors du Gabon est écarté (`is_real_estate` à false, `details.hors_gabon` à true).
  * @example
  * const fiche = await analyzePost("Studio meublé 150k à Okala, 077 12 34 56");
  */
-export async function analyzePost(
-  text: string,
-  apiKey?: string | null,
-  context?: string | null
-): Promise<AIExtractionResult> {
+export async function analyzePost(text: string, apiKey?: string | null): Promise<AIExtractionResult> {
   const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
 
   const response = await client.chat.completions.create({
@@ -129,10 +125,9 @@ export async function analyzePost(
     max_tokens: 1400 + reasoningBudget,
     messages: [
       { role: "system", content: EXTRACTION_PROMPT },
-      {
-        role: "user",
-        content: `${context ? `Source : ${context}\n\n` : ""}Texte de la publication :\n\n${text}`,
-      },
+      // WHY: seul le texte est transmis. Le nom du groupe a été retiré : le modèle le prenait
+      // pour le titre de la publication et classait tout en « maison à louer ».
+      { role: "user", content: `Texte de la publication :\n\n${text}` },
     ],
     temperature: 0,
   });
@@ -142,10 +137,11 @@ export async function analyzePost(
     throw new Error("Pas de réponse de l'IA");
   }
 
-  const e = sanitizeExtraction(JSON.parse(extractJson(content)), text, context || "");
+  const e = sanitizeExtraction(JSON.parse(extractJson(content)), text);
 
   return {
-    is_real_estate: e.est_immobilier,
+    // Périmètre actuel : Gabon uniquement.
+    is_real_estate: e.est_immobilier && !e.hors_gabon,
     type_offre: toTypeOffre(e.transaction),
     type_bien: e.type,
     prix: e.prix,
