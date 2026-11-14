@@ -22,10 +22,30 @@ const TYPE_BIEN_OPTIONS = ["appartement", "maison", "studio", "chambre", "terrai
 const STATUS_OPTIONS = ["new", "sent", "archived", "favorite"];
 const STATUS_LABELS: Record<string, string> = { new: "Nouveau", sent: "Envoyé", archived: "Archivé", favorite: "Favori" };
 
+type SortKey = "published_desc" | "published_asc" | "collected_desc" | "price_asc" | "price_desc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "published_desc", label: "Publication : plus récentes" },
+  { value: "published_asc", label: "Publication : plus anciennes" },
+  { value: "collected_desc", label: "Dernières collectées" },
+  { value: "price_asc", label: "Prix croissant" },
+  { value: "price_desc", label: "Prix décroissant" },
+];
+
+// Colonne et sens de tri ; les valeurs vides passent toujours en dernier.
+const SORT_ORDER: Record<SortKey, { column: string; ascending: boolean }> = {
+  published_desc: { column: "fb_posted_at", ascending: false },
+  published_asc: { column: "fb_posted_at", ascending: true },
+  collected_desc: { column: "created_at", ascending: false },
+  price_asc: { column: "prix", ascending: true },
+  price_desc: { column: "prix", ascending: false },
+};
+
 export default function AnnoncesPage() {
   const [annonces, setAnnonces] = useState<Annonce[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"cards" | "table">("cards");
+  const [sort, setSort] = useState<SortKey>("published_desc");
   const [filters, setFilters] = useState({
     type_offre: "",
     type_bien: "",
@@ -47,7 +67,9 @@ export default function AnnoncesPage() {
       .from("annonces")
       .select("*")
       .eq("ai_is_real_estate", true)
-      .order("fb_posted_at", { ascending: false, nullsFirst: false })
+      .order(SORT_ORDER[sort].column, { ascending: SORT_ORDER[sort].ascending, nullsFirst: false })
+      // Départage stable : à valeur égale (ou absente), la plus récemment collectée d'abord.
+      .order("created_at", { ascending: false })
       .limit(200);
 
     if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
@@ -79,7 +101,7 @@ export default function AnnoncesPage() {
 
     setAnnonces(filtered);
     setLoading(false);
-  }, [filters]);
+  }, [filters, sort]);
 
   useEffect(() => {
     fetchAnnonces();
@@ -147,7 +169,7 @@ export default function AnnoncesPage() {
             <Input type="number" placeholder="Prix min" value={filters.prix_min} onChange={(e) => setFilters({ ...filters, prix_min: e.target.value })} />
             <Input type="number" placeholder="Prix max" value={filters.prix_max} onChange={(e) => setFilters({ ...filters, prix_max: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-3">
             <Input placeholder="Quartier" value={filters.quartier} onChange={(e) => setFilters({ ...filters, quartier: e.target.value })} />
             <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
               <option value="">Statut</option>
@@ -163,6 +185,9 @@ export default function AnnoncesPage() {
               <option value="">Photos</option>
               <option value="yes">Avec photos</option>
               <option value="no">Sans photos</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-10 rounded-md border border-input bg-background px-3 text-sm" title="Trier par" aria-label="Trier par">
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <select value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
               <option value="">Source</option>
