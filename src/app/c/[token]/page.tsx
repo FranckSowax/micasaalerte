@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, ExternalLink, Home, Loader2, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
-import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, MAX_RADIUS_KM, MIN_RADIUS_KM, type CriteriaValue } from "@/components/criteria-form";
+import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
@@ -67,7 +67,7 @@ function toCriteriaValue(c: Criteria | undefined): CriteriaValue {
     prix_min: c.prixMin ? String(c.prixMin) : "",
     prix_max: c.prixMax ? String(c.prixMax) : "",
     nb_chambres_min: c.chambresMin ? String(c.chambresMin) : "",
-    exigences: c.exigences || "",
+    exigences: parseExigences(c.exigences),
     zone: hasZone ? { lat: c.geoLat as number, lon: c.geoLon as number, label: "Votre secteur" } : null,
     radius: Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(c.radiusKm || MIN_RADIUS_KM))),
   };

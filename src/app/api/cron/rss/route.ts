@@ -2,6 +2,10 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { isAIConfigured } from "@/lib/ai";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending } from "@/lib/ingest";
+import { persistPhotos } from "@/lib/photos";
+
+/** Photos copiées dans le stockage par passage : borne la durée du cron. */
+const MAX_PHOTOS_PER_RUN = 25;
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
@@ -216,5 +220,13 @@ async function handleCron(request: Request) {
       .in("id", Array.from(touchedTiktok));
   }
 
-  return NextResponse.json({ success: true, ...stats, reprocessed, feeds, unknownSources, aiErrorMessages });
+  // Copie permanente des photos : les liens Facebook et TikTok expirent en quelques jours.
+  let photos = { stored: 0, dead: 0, failed: 0 };
+  try {
+    photos = await persistPhotos(client, MAX_PHOTOS_PER_RUN);
+  } catch (error) {
+    console.error("Photo copy failed:", error instanceof Error ? error.message : error);
+  }
+
+  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, unknownSources, aiErrorMessages });
 }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, X } from "lucide-react";
+import { Check, MapPin, X } from "lucide-react";
 import { Map } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, listPlaces, locatePlace, placesWithin } from "@/lib/geo";
 
@@ -20,6 +20,33 @@ export const MAX_RADIUS_KM = 5;
 // Quartiers et localités proposés à la saisie.
 const PLACES = listPlaces();
 
+/** Exigences proposées au client, à cocher. */
+export const EXIGENCE_OPTIONS = [
+  "Meublé",
+  "Climatisé",
+  "Parking",
+  "Gardien",
+  "Eau chaude",
+  "Groupe électrogène",
+  "Forage",
+  "Barrière",
+  "Douche interne",
+  "Cuisine équipée",
+];
+
+const simplify = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+/**
+ * Exigences enregistrées (texte séparé par des virgules) → options cochées.
+ * Un ancien texte libre qui ne correspond à aucune option est ignoré.
+ *
+ * @example parseExigences("meublé, climatisé") // ["Meublé", "Climatisé"]
+ */
+export function parseExigences(text: string | null | undefined): string[] {
+  const parts = (text || "").split(/[,;\n]/).map(simplify).filter(Boolean);
+  return EXIGENCE_OPTIONS.filter((option) => parts.some((part) => part === simplify(option) || part.startsWith(simplify(option))));
+}
+
 export interface CriteriaZone {
   lat: number;
   lon: number;
@@ -32,7 +59,8 @@ export interface CriteriaValue {
   prix_min: string;
   prix_max: string;
   nb_chambres_min: string;
-  exigences: string;
+  /** Options cochées parmi EXIGENCE_OPTIONS. */
+  exigences: string[];
   zone: CriteriaZone | null;
   radius: number;
 }
@@ -43,7 +71,7 @@ export const EMPTY_CRITERIA: CriteriaValue = {
   prix_min: "",
   prix_max: "",
   nb_chambres_min: "",
-  exigences: "",
+  exigences: [],
   zone: null,
   radius: MIN_RADIUS_KM,
 };
@@ -66,7 +94,8 @@ export function criteriaPayload(value: CriteriaValue) {
     geo_lon: value.zone ? value.zone.lon : null,
     geo_radius_km: value.zone ? value.radius : null,
     filter_ville: "Libreville",
-    exigences: value.exigences || null,
+    // Enregistré en texte (« Meublé, Climatisé ») : le matching y lit meublé, climatisé et parking.
+    exigences: value.exigences.length ? value.exigences.join(", ") : null,
   };
 }
 
@@ -238,12 +267,24 @@ export function CriteriaFields({ value, onChange }: { value: CriteriaValue; onCh
       <Card>
         <CardHeader><CardTitle className="text-lg">Exigences particulières</CardTitle></CardHeader>
         <CardContent>
-          <textarea
-            placeholder="Meublé, climatisé, parking, gardien, eau chaude..."
-            value={value.exigences}
-            onChange={(e) => onChange({ ...value, exigences: e.target.value })}
-            className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-          />
+          <p className="text-xs text-muted-foreground mb-3">Touchez ce qui compte pour vous. Vous pouvez en choisir plusieurs.</p>
+          <div className="flex flex-wrap gap-2">
+            {EXIGENCE_OPTIONS.map((option) => {
+              const selected = value.exigences.includes(option);
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onChange({ ...value, exigences: selected ? value.exigences.filter((x) => x !== option) : [...value.exigences, option] })}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-accent"}`}
+                >
+                  {selected && <Check className="h-3.5 w-3.5" />}
+                  {option}
+                </button>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
     </>
