@@ -19,6 +19,8 @@ export interface IngestInput {
   publishedAt: string | null;
   /** Clé IA propre au compte, utilisée seulement en repli (voir lib/ai.ts). */
   legacyAiKey?: string | null;
+  /** Appelé avec le message d'erreur quand l'analyse IA échoue (pour le diagnostic). */
+  onAiError?: (message: string) => void;
 }
 
 /**
@@ -106,12 +108,14 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
     }
     return "new_annonce";
   } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Erreur IA";
+    input.onAiError?.(message);
     if (rawPostId) {
       await client
         .from("raw_posts")
         .update({
           ai_status: "error",
-          ai_error: error instanceof Error ? error.message.slice(0, 500) : "Erreur IA",
+          ai_error: message,
         })
         .eq("id", rawPostId);
     }

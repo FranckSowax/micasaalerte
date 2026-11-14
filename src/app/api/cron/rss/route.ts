@@ -50,6 +50,8 @@ async function handleCron(request: Request) {
   const unknownGroups: Record<string, number> = {};
   const feeds: { items: number; spanMinutes: number | null; possibleGap: boolean; error?: string }[] = [];
   const touchedGroups = new Set<string>();
+  // Messages d'erreur distincts de l'IA, avec leur nombre : sans eux un échec en série est illisible.
+  const aiErrorMessages: Record<string, number> = {};
   let analyses = 0;
 
   for (const feedUrl of feedUrls) {
@@ -118,6 +120,10 @@ async function handleCron(request: Request) {
           images: post.images,
           publishedAt: post.publishedAt,
           legacyAiKey: group.profiles?.kimi_api_key,
+          onAiError: (message) => {
+            const key = message.slice(0, 220);
+            aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
+          },
         });
 
         if (oldestWasNew === null) oldestWasNew = status !== "known";
@@ -141,5 +147,5 @@ async function handleCron(request: Request) {
       .in("id", Array.from(touchedGroups));
   }
 
-  return NextResponse.json({ success: true, ...stats, feeds, unknownGroups });
+  return NextResponse.json({ success: true, ...stats, feeds, unknownGroups, aiErrorMessages });
 }
