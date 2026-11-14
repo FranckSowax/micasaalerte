@@ -22,6 +22,8 @@ interface AIProvider {
   jsonMode: boolean;
   /** Marge de tokens pour le raisonnement interne du modèle, qui compte dans max_tokens. */
   reasoningBudget: number;
+  /** Paramètres propres au fournisseur, ajoutés au corps de la requête. */
+  extraBody: Record<string, unknown>;
 }
 
 /**
@@ -40,6 +42,9 @@ function getAIProvider(legacyKey?: string | null): AIProvider {
       model: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
       jsonMode: true,
       reasoningBudget: 3000,
+      // WHY: sans borne, le modèle épuisait parfois tout son quota à raisonner et ne
+      // rédigeait rien (arrêt « length »). Un effort faible suffit pour remplir une fiche.
+      extraBody: { reasoning: { effort: "low" } },
     };
   }
 
@@ -51,6 +56,7 @@ function getAIProvider(legacyKey?: string | null): AIProvider {
     model: KIMI_MODEL,
     jsonMode: false,
     reasoningBudget: 0,
+    extraBody: {},
   };
 }
 
@@ -117,11 +123,12 @@ function globalConfidence(e: Extraction): number {
  * const fiche = await analyzePost("Studio meublé 150k à Okala, 077 12 34 56");
  */
 export async function analyzePost(text: string, apiKey?: string | null): Promise<AIExtractionResult> {
-  const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
+  const { client, model, jsonMode, reasoningBudget, extraBody } = getAIProvider(apiKey);
 
   const response = await client.chat.completions.create({
     model,
     ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+    ...extraBody,
     max_tokens: 1400 + reasoningBudget,
     messages: [
       { role: "system", content: EXTRACTION_PROMPT },
@@ -208,7 +215,7 @@ export async function interpretClientMessage(
   currentDemand: unknown,
   apiKey?: string
 ): Promise<ChatbotIntent> {
-  const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
+  const { client, model, jsonMode, reasoningBudget, extraBody } = getAIProvider(apiKey);
 
   const context = currentDemand
     ? `\nCritères actuels du client : ${JSON.stringify(currentDemand)}`
@@ -217,6 +224,7 @@ export async function interpretClientMessage(
   const response = await client.chat.completions.create({
     model,
     ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+    ...extraBody,
     max_tokens: 256 + reasoningBudget,
     messages: [
       { role: "system", content: CHATBOT_SYSTEM_PROMPT },
