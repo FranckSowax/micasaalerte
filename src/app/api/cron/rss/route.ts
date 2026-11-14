@@ -5,7 +5,7 @@ import { ingestPost } from "@/lib/ingest";
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
-// Collecte des groupes Facebook par flux rss.app (RSS_FEED_URLS).
+// Collecte des groupes et des profils d'agents Facebook par flux rss.app (RSS_FEED_URLS).
 // Appelée en POST par le service cron Railway ; GET accepté pour un déclenchement manuel.
 export const dynamic = "force-dynamic";
 export const GET = handleCron;
@@ -15,13 +15,15 @@ const FEED_TIMEOUT_MS = 30_000;
 // Borne la durée d'un passage : au-delà, le reste est traité au passage suivant.
 const MAX_ANALYSES_PER_RUN = 120;
 
-interface GroupRow {
+/** Source enregistrée dans l'application : un groupe ou un profil d'agent d'un compte. */
+interface SourceRow {
   id: string;
-  user_id: string;
-  group_id: string;
-  group_name: string;
-  profiles: { kimi_api_key: string | null } | null;
+  userId: string;
+  name: string;
+  aiKey: string | null;
 }
+
+type OwnerProfile = { kimi_api_key: string | null } | null;
 
 async function handleCron(request: Request) {
   if (!isAuthorizedCron(request)) {
@@ -40,14 +42,26 @@ async function handleCron(request: Request) {
     .select("id, user_id, group_id, group_name, profiles!inner(kimi_api_key)")
     .eq("is_active", true);
 
-  // Un même groupe Facebook peut être suivi par plusieurs comptes.
-  const groupsByFacebookId = new Map<string, GroupRow[]>();
-  for (const row of (groupRows || []) as unknown as GroupRow[]) {
-    groupsByFacebookId.set(row.group_id, [...(groupsByFacebookId.get(row.group_id) || []), row]);
+  const { data: agentRows } = await client
+    .from("agent_profiles")
+    .select("id, user_id, profile_id, profile_name, profiles!inner(kimi_api_key)")
+    .eq("is_active", true);
+
+  // Une même source Facebook peut être suivie par plusieurs comptes.
+  // Clé : « group:<id> » ou « profile:<id ou nom d'utilisateur en minuscules> ».
+  const sources = new Map<string, SourceRow[]>();
+  const addSource = (key: string, row: SourceRow) => sources.set(key, [...(sources.get(key) || []), row]);
+
+  for (const g of (groupRows || []) as unknown as { id: string; user_id: string; group_id: string; group_name: string; profiles: OwnerProfile }[]) {
+    addSource(`group:${g.group_id}`, { id: g.id, userId: g.user_id, name: g.group_name, aiKey: g.profiles?.kimi_api_key ?? null });
+  }
+  for (const a of (agentRows || []) as unknown as { id: string; user_id: string; profile_id: string; profile_name: string; profiles: OwnerProfile }[]) {
+    addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
   const stats = { posts: 0, newAnnonces: 0, notRealEstate: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
-  const unknownGroups: Record<string, number> = {};
+  const unknownSources: Record<string, number> = {};
+  const touchedAgents = new Set<string>();
   const feeds: { items: number; spanMinutes: number | null; possibleGap: boolean; error?: string }[] = [];
   const touchedGroups = new Set<string>();
   // Messages d'erreur distincts de l'IA, avec leur nombre : sans eux un échec en série est illisible.
@@ -80,9 +94,12 @@ async function handleCron(request: Request) {
 
     for (const post of posts) {
       stats.posts++;
-      const owners = groupsByFacebookId.get(post.groupId);
+      const sourceKey = `${post.kind}:${post.sourceId.toLowerCase()}`;
+      const owners = sources.get(sourceKey);
       if (!owners?.length) {
-        unknownGroups[post.groupId] = (unknownGroups[post.groupId] || 0) + 1;
+        // Pour un profil, on ajoute le nom de l'auteur : c'est lui qu'il faut enregistrer comme agent.
+        const label = post.kind === "profile" ? `${sourceKey} (${post.author || "?"})` : sourceKey;
+        unknownSources[label] = (unknownSources[label] || 0) + 1;
         continue;
       }
       if (!post.text) {
@@ -90,17 +107,17 @@ async function handleCron(request: Request) {
         continue;
       }
 
-      const textKey = `${post.groupId}:${post.author}:${post.text}`;
+      const textKey = `${sourceKey}:${post.author}:${post.text}`;
       const repeated = seenTexts.has(textKey);
       seenTexts.add(textKey);
 
-      for (const group of owners) {
-        touchedGroups.add(group.id);
+      for (const source of owners) {
+        (post.kind === "group" ? touchedGroups : touchedAgents).add(source.id);
         if (repeated) {
           stats.known++;
           continue;
         }
-        if (!isAIConfigured(group.profiles?.kimi_api_key)) {
+        if (!isAIConfigured(source.aiKey)) {
           stats.aiErrors++;
           continue;
         }
@@ -110,16 +127,18 @@ async function handleCron(request: Request) {
         }
 
         const status = await ingestPost(client, {
-          userId: group.user_id,
-          groupRowId: group.id,
-          groupName: group.group_name,
+          userId: source.userId,
+          sourceType: post.kind,
+          sourceRowId: source.id,
+          sourceName: source.name,
+          authorId: post.kind === "profile" ? post.sourceId : null,
           postId: post.postId,
           url: post.url,
           author: post.author,
           text: post.text,
           images: post.images,
           publishedAt: post.publishedAt,
-          legacyAiKey: group.profiles?.kimi_api_key,
+          legacyAiKey: source.aiKey,
           onAiError: (message) => {
             const key = message.slice(0, 220);
             aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
@@ -146,6 +165,12 @@ async function handleCron(request: Request) {
       .update({ last_scraped_at: new Date().toISOString() })
       .in("id", Array.from(touchedGroups));
   }
+  if (touchedAgents.size) {
+    await client
+      .from("agent_profiles")
+      .update({ last_scraped_at: new Date().toISOString() })
+      .in("id", Array.from(touchedAgents));
+  }
 
-  return NextResponse.json({ success: true, ...stats, feeds, unknownGroups, aiErrorMessages });
+  return NextResponse.json({ success: true, ...stats, feeds, unknownSources, aiErrorMessages });
 }

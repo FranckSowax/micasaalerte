@@ -17,7 +17,8 @@ describe("parseFeed", () => {
   it("extrait groupe, publication, auteur, texte, image et date", () => {
     expect(parseFeed({ items: [item()] })).toEqual([
       {
-        groupId: "985585794841161",
+        kind: "group",
+        sourceId: "985585794841161",
         postId: "29392345270405167",
         url: "https://www.facebook.com/groups/985585794841161/posts/29392345270405167/",
         author: "LEWIS IMMO",
@@ -36,20 +37,35 @@ describe("parseFeed", () => {
         item({ url: "https://www.facebook.com/groups/111/posts/1/", date_published: "2026-11-14T18:00:00Z" }),
       ],
     });
-    expect(posts.map((p) => `${p.groupId}/${p.postId}`)).toEqual(["222/2", "111/1", "111/3"]);
+    expect(posts.map((p) => `${p.sourceId}/${p.postId}`)).toEqual(["222/2", "111/1", "111/3"]);
   });
 
   it("ignore les éléments sans lien de groupe et tolère les champs absents", () => {
     const posts = parseFeed({
       items: [
-        item({ url: "https://www.facebook.com/somepage/posts/1" }),
+        item({ url: "https://www.facebook.com/watch/?v=123" }),
         null,
         "texte",
         { url: "https://www.facebook.com/groups/5/posts/6/" },
       ],
     });
     expect(posts).toEqual([
-      { groupId: "5", postId: "6", url: "https://www.facebook.com/groups/5/posts/6/", author: null, text: "", images: [], publishedAt: null },
+      { kind: "group", sourceId: "5", postId: "6", url: "https://www.facebook.com/groups/5/posts/6/", author: null, text: "", images: [], publishedAt: null },
+    ]);
+  });
+
+  it("reconnaît les publications de profils et de pages d'agents", () => {
+    const posts = parseFeed({
+      items: [
+        item({ url: "https://m.facebook.com/permalink.php?id=100067401866344&story_fbid=pfbid0N4d2AdN", date_published: "2026-11-14T10:00:00Z" }),
+        item({ url: "https://m.facebook.com/permalink.php?story_fbid=pfbid0ZZ&id=100063558637554", date_published: "2026-11-14T11:00:00Z" }),
+        item({ url: "https://m.facebook.com/joshua.houenassou.1/posts/pfbid0TqgHBBF", date_published: "2026-11-14T12:00:00Z" }),
+      ],
+    });
+    expect(posts.map((p) => [p.kind, p.sourceId, p.postId])).toEqual([
+      ["profile", "100067401866344", "pfbid0N4d2AdN"],
+      ["profile", "100063558637554", "pfbid0ZZ"],
+      ["profile", "joshua.houenassou.1", "pfbid0TqgHBBF"],
     ]);
   });
 

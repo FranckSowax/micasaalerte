@@ -8,9 +8,14 @@ export type IngestStatus = "known" | "not_real_estate" | "new_annonce" | "ai_err
 
 export interface IngestInput {
   userId: string;
-  /** Identifiant (uuid) de la ligne facebook_groups. */
-  groupRowId: string;
-  groupName: string;
+  /** Source : groupe (ligne facebook_groups) ou profil d'agent (ligne agent_profiles). */
+  sourceType: "group" | "profile";
+  /** Identifiant (uuid) de la ligne facebook_groups ou agent_profiles. */
+  sourceRowId: string;
+  /** Nom de la source, transmis à l'IA comme contexte fiable. */
+  sourceName: string;
+  /** Identifiant Facebook de l'auteur, connu pour un profil d'agent. */
+  authorId?: string | null;
   postId: string;
   url: string | null;
   author: string | null;
@@ -24,7 +29,7 @@ export interface IngestInput {
 }
 
 /**
- * Enregistre une publication de groupe : mémorisation dans raw_posts, analyse IA,
+ * Enregistre une publication (groupe ou profil d'agent) : mémorisation dans raw_posts, analyse IA,
  * puis création de l'annonce si c'est de l'immobilier.
  *
  * WHY: chaque publication est mémorisée, y compris les non-immobilières, pour ne
@@ -56,8 +61,10 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
       .from("raw_posts")
       .insert({
         user_id: input.userId,
-        fb_group_id: input.groupRowId,
-        source_type: "group",
+        ...(input.sourceType === "group"
+          ? { fb_group_id: input.sourceRowId }
+          : { agent_profile_id: input.sourceRowId }),
+        source_type: input.sourceType,
         fb_post_id: input.postId,
         fb_post_url: input.url,
         fb_author_name: input.author,
@@ -72,7 +79,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
   }
 
   try {
-    const analysis = await analyzePost(input.text, input.legacyAiKey, input.groupName);
+    const analysis = await analyzePost(input.text, input.legacyAiKey, input.sourceName);
 
     if (rawPostId) {
       await client
@@ -93,8 +100,9 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
         user_id: input.userId,
         fb_post_id: input.postId,
         fb_post_url: input.url,
-        fb_group_id: input.groupRowId,
+        fb_group_id: input.sourceType === "group" ? input.sourceRowId : null,
         fb_author_name: input.author,
+        fb_author_id: input.authorId || null,
         fb_posted_at: input.publishedAt,
         raw_text: input.text,
         raw_images: input.images,
