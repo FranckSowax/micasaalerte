@@ -1,13 +1,13 @@
-// Lecture d'un flux rss.app (format JSON Feed) de sources Facebook.
-// Un flux peut être un « bundle » mêlant plusieurs groupes ou plusieurs profils
-// d'agents : chaque publication est rattachée à sa source grâce à son lien.
+// Lecture d'un flux rss.app (format JSON Feed) de sources Facebook et TikTok.
+// Un flux peut être un « bundle » mêlant plusieurs groupes, profils d'agents ou
+// comptes TikTok : chaque publication est rattachée à sa source grâce à son lien.
 
 export interface FeedPost {
-  /** Type de source : publication d'un groupe, ou d'un profil / d'une page. */
-  kind: "group" | "profile";
-  /** Identifiant Facebook de la source : identifiant du groupe, ou identifiant / nom d'utilisateur du profil. */
+  /** Type de source : groupe Facebook, profil / page Facebook, ou compte TikTok. */
+  kind: "group" | "profile" | "tiktok";
+  /** Identifiant de la source : identifiant du groupe, identifiant / nom d'utilisateur du profil, ou nom du compte TikTok sans « @ ». */
   sourceId: string;
-  /** Identifiant Facebook de la publication, tiré du lien. */
+  /** Identifiant de la publication, tiré du lien. Pour TikTok : « tiktok_<id de la vidéo> ». */
   postId: string;
   url: string;
   author: string | null;
@@ -23,12 +23,17 @@ const PROFILE_PERMALINK = /facebook\.com\/permalink\.php\?(?:[^#]*&)?id=(\d+)/;
 const STORY_ID = /[?&]story_fbid=([\w-]+)/;
 // … ou /<nom d'utilisateur>/posts/<publication>
 const PROFILE_POST = /facebook\.com\/([A-Za-z0-9.]+)\/posts\/([\w-]+)/;
+const TIKTOK_POST = /tiktok\.com\/@([\w.]+)\/(?:video|photo)\/(\d+)/;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
 function locate(url: string): Pick<FeedPost, "kind" | "sourceId" | "postId"> | null {
+  const tiktok = url.match(TIKTOK_POST);
+  // WHY: même forme d'identifiant que la collecte TikTok historique, pour ne pas recréer ses annonces.
+  if (tiktok) return { kind: "tiktok", sourceId: tiktok[1], postId: `tiktok_${tiktok[2]}` };
+
   const group = url.match(GROUP_POST);
   if (group) return { kind: "group", sourceId: group[1], postId: group[2] };
 
@@ -44,7 +49,7 @@ function locate(url: string): Pick<FeedPost, "kind" | "sourceId" | "postId"> | n
 
 /**
  * Extrait les publications exploitables d'un flux JSON rss.app.
- * Les éléments dont le lien ne désigne ni un groupe ni un profil sont ignorés.
+ * Les éléments dont le lien ne désigne ni un groupe, ni un profil, ni une vidéo TikTok sont ignorés.
  *
  * @example
  * const posts = parseFeed(await (await fetch(url)).json());

@@ -8,10 +8,10 @@ export type IngestStatus = "known" | "not_real_estate" | "out_of_area" | "new_an
 
 export interface IngestInput {
   userId: string;
-  /** Source : groupe (ligne facebook_groups) ou profil d'agent (ligne agent_profiles). */
-  sourceType: "group" | "profile";
-  /** Identifiant (uuid) de la ligne facebook_groups ou agent_profiles. */
-  sourceRowId: string;
+  /** Source : groupe (facebook_groups), profil d'agent (agent_profiles) ou compte TikTok. */
+  sourceType: "group" | "profile" | "tiktok";
+  /** Identifiant (uuid) de la ligne facebook_groups ou agent_profiles ; sans objet pour TikTok. */
+  sourceRowId: string | null;
   /** Identifiant Facebook de l'auteur, connu pour un profil d'agent. */
   authorId?: string | null;
   postId: string;
@@ -62,9 +62,8 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
       .from("raw_posts")
       .insert({
         user_id: input.userId,
-        ...(input.sourceType === "group"
-          ? { fb_group_id: input.sourceRowId }
-          : { agent_profile_id: input.sourceRowId }),
+        ...(input.sourceType === "group" ? { fb_group_id: input.sourceRowId } : {}),
+        ...(input.sourceType === "profile" ? { agent_profile_id: input.sourceRowId } : {}),
         source_type: input.sourceType,
         fb_post_id: input.postId,
         fb_post_url: input.url,
@@ -156,16 +155,22 @@ export async function reprocessPending(
     .from("raw_posts")
     .select("user_id, fb_group_id, agent_profile_id, source_type, fb_post_id, fb_post_url, fb_author_name, fb_author_id, raw_text, raw_images, fb_posted_at")
     .in("ai_status", ["pending", "error"])
-    .in("source_type", ["group", "profile"])
+    .in("source_type", ["group", "profile", "tiktok"])
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
   for (const row of rows || []) {
-    const sourceType = row.source_type === "profile" ? "profile" : "group";
-    const sourceRowId = (sourceType === "group" ? row.fb_group_id : row.agent_profile_id) as string | null;
+    const sourceType = row.source_type === "profile" ? "profile" : row.source_type === "tiktok" ? "tiktok" : "group";
+    const sourceRowId =
+      sourceType === "group"
+        ? (row.fb_group_id as string | null)
+        : sourceType === "profile"
+          ? (row.agent_profile_id as string | null)
+          : null;
     const text = typeof row.raw_text === "string" ? row.raw_text.trim() : "";
-    if (!sourceRowId || !text) continue;
+    // Un post Facebook dont la source a été supprimée n'est plus rattachable : on le laisse.
+    if (!text || (sourceType !== "tiktok" && !sourceRowId)) continue;
 
     const status = await ingestPost(client, {
       userId: row.user_id as string,

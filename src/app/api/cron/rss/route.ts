@@ -5,7 +5,7 @@ import { ingestPost, reprocessPending } from "@/lib/ingest";
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
-// Collecte des groupes et des profils d'agents Facebook par flux rss.app (RSS_FEED_URLS).
+// Collecte des groupes Facebook, des profils d'agents et des comptes TikTok par flux rss.app (RSS_FEED_URLS).
 // Appelée en POST par le service cron Railway ; GET accepté pour un déclenchement manuel.
 export const dynamic = "force-dynamic";
 export const GET = handleCron;
@@ -47,8 +47,13 @@ async function handleCron(request: Request) {
     .select("id, user_id, profile_id, profile_name, profiles!inner(kimi_api_key)")
     .eq("is_active", true);
 
-  // Une même source Facebook peut être suivie par plusieurs comptes.
-  // Clé : « group:<id> » ou « profile:<id ou nom d'utilisateur en minuscules> ».
+  const { data: tiktokRows } = await client
+    .from("tiktok_accounts")
+    .select("id, user_id, tiktok_handle, profiles!inner(kimi_api_key)")
+    .eq("is_active", true);
+
+  // Une même source peut être suivie par plusieurs comptes.
+  // Clé : « group:<id> », « profile:<id ou nom d'utilisateur> » ou « tiktok:<nom du compte> », en minuscules.
   const sources = new Map<string, SourceRow[]>();
   const addSource = (key: string, row: SourceRow) => sources.set(key, [...(sources.get(key) || []), row]);
 
@@ -60,8 +65,14 @@ async function handleCron(request: Request) {
   }
 
   const stats = { posts: 0, newAnnonces: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
+    const handle = t.tiktok_handle.replace(/^@/, "").toLowerCase();
+    addSource(`tiktok:${handle}`, { id: t.id, userId: t.user_id, name: `@${handle}`, aiKey: t.profiles?.kimi_api_key ?? null });
+  }
+
   const unknownSources: Record<string, number> = {};
   const touchedAgents = new Set<string>();
+  const touchedTiktok = new Set<string>();
   const feeds: { items: number; spanMinutes: number | null; possibleGap: boolean; error?: string }[] = [];
   const touchedGroups = new Set<string>();
   // Messages d'erreur distincts de l'IA, avec leur nombre : sans eux un échec en série est illisible.
@@ -114,7 +125,7 @@ async function handleCron(request: Request) {
       seenTexts.add(textKey);
 
       for (const source of owners) {
-        (post.kind === "group" ? touchedGroups : touchedAgents).add(source.id);
+        (post.kind === "group" ? touchedGroups : post.kind === "profile" ? touchedAgents : touchedTiktok).add(source.id);
         if (repeated) {
           stats.known++;
           continue;
@@ -131,11 +142,12 @@ async function handleCron(request: Request) {
         const status = await ingestPost(client, {
           userId: source.userId,
           sourceType: post.kind,
-          sourceRowId: source.id,
+          sourceRowId: post.kind === "tiktok" ? null : source.id,
           authorId: post.kind === "profile" ? post.sourceId : null,
           postId: post.postId,
           url: post.url,
-          author: post.author,
+          // Convention de l'application pour TikTok : l'auteur est le nom du compte précédé de « @ ».
+          author: post.kind === "tiktok" ? source.name : post.author,
           text: post.text,
           images: post.images,
           publishedAt: post.publishedAt,
@@ -182,6 +194,12 @@ async function handleCron(request: Request) {
       .from("agent_profiles")
       .update({ last_scraped_at: new Date().toISOString() })
       .in("id", Array.from(touchedAgents));
+  }
+  if (touchedTiktok.size) {
+    await client
+      .from("tiktok_accounts")
+      .update({ last_scraped_at: new Date().toISOString() })
+      .in("id", Array.from(touchedTiktok));
   }
 
   return NextResponse.json({ success: true, ...stats, reprocessed, feeds, unknownSources, aiErrorMessages });

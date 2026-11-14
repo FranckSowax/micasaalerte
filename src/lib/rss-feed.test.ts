@@ -69,6 +69,19 @@ describe("parseFeed", () => {
     ]);
   });
 
+  it("reconnaît les vidéos et carrousels TikTok, avec l'identifiant historique tiktok_<id>", () => {
+    const posts = parseFeed({
+      items: [
+        item({ url: "https://www.tiktok.com/@akd_imm241/video/7708071838521330964", authors: [{ name: "@akd_imm241" }], date_published: "2026-11-14T10:00:00Z" }),
+        item({ url: "https://www.tiktok.com/@jika.immo/photo/7700000000000000001?lang=fr", date_published: "2026-11-14T11:00:00Z" }),
+      ],
+    });
+    expect(posts.map((p) => [p.kind, p.sourceId, p.postId])).toEqual([
+      ["tiktok", "akd_imm241", "tiktok_7708071838521330964"],
+      ["tiktok", "jika.immo", "tiktok_7700000000000000001"],
+    ]);
+  });
+
   it("renvoie une liste vide pour un flux mal formé", () => {
     expect(parseFeed(null)).toEqual([]);
     expect(parseFeed({ items: "x" })).toEqual([]);
