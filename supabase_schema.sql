@@ -539,3 +539,38 @@ ALTER TABLE chatbot_conversations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view own conversations" ON chatbot_conversations;
 CREATE POLICY "Users can view own conversations" ON chatbot_conversations
     FOR SELECT USING (auth.uid() = user_id);
+
+-- ============================================================
+-- FICHE NORMALISÉE ET MATCHING (rejouable)
+-- ============================================================
+
+-- Détails de l'annonce sans colonne dédiée : charges, caution, périodicité, pays,
+-- salons, climatisation, parking, disponibilité, confiance par champ, extraits de
+-- la source justifiant chaque valeur, champs à vérifier.
+ALTER TABLE annonces ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '{}'::jsonb;
+
+-- Préférences souples de l'abonné (elles pèsent dans le score, sans bloquer)
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS filter_climatise BOOLEAN;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS filter_parking BOOLEAN;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS filter_surface_min NUMERIC;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS keywords_include TEXT[] DEFAULT '{}';
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS keywords_exclude TEXT[] DEFAULT '{}';
+
+-- Réglages d'alerte : seuil de score (0-100), envoi immédiat ou résumé quotidien,
+-- plafond par jour, plage silencieuse en heures locales (Africa/Libreville).
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS min_score INTEGER DEFAULT 50;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS alert_mode TEXT DEFAULT 'immediate';
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS max_alerts_per_day INTEGER DEFAULT 5;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_start SMALLINT DEFAULT 21;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_end SMALLINT DEFAULT 7;
+
+-- Clé d'unicité abonné + annonce + version : empêche tout doublon d'alerte.
+ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS annonce_version INTEGER NOT NULL DEFAULT 1;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_client_demand_sends_key
+        ON client_demand_sends(demand_id, annonce_id, annonce_version);
+EXCEPTION WHEN unique_violation THEN
+    -- Des doublons existent déjà : l'index n'est pas créé, le reste du script continue.
+    RAISE NOTICE 'uq_client_demand_sends_key non créé : doublons existants dans client_demand_sends';
+END $$;

@@ -110,7 +110,7 @@ export interface Database {
           superficie: number | null;
           meuble: boolean | null;
           quartier: string | null;
-          ville: string;
+          ville: string | null;
           adresse_complete: string | null;
           telephone: string | null;
           whatsapp: string | null;
@@ -146,7 +146,7 @@ export interface Database {
           superficie?: number | null;
           meuble?: boolean | null;
           quartier?: string | null;
-          ville?: string;
+          ville?: string | null;
           adresse_complete?: string | null;
           telephone?: string | null;
           whatsapp?: string | null;
@@ -182,7 +182,7 @@ export interface Database {
           superficie?: number | null;
           meuble?: boolean | null;
           quartier?: string | null;
-          ville?: string;
+          ville?: string | null;
           adresse_complete?: string | null;
           telephone?: string | null;
           whatsapp?: string | null;
@@ -366,6 +366,19 @@ export interface ClientDemand {
   filter_quartiers: string[];
   filter_ville: string;
   filter_meuble: boolean | null;
+  // Préférences souples et réglages d'alerte : colonnes facultatives (ajoutées par migration).
+  filter_climatise?: boolean | null;
+  filter_parking?: boolean | null;
+  filter_surface_min?: number | null;
+  keywords_include?: string[] | null;
+  keywords_exclude?: string[] | null;
+  /** Score minimal (0-100) pour un envoi automatique. */
+  min_score?: number | null;
+  alert_mode?: "immediate" | "digest" | null;
+  max_alerts_per_day?: number | null;
+  /** Plage silencieuse, en heures locales (Africa/Libreville). */
+  quiet_start?: number | null;
+  quiet_end?: number | null;
   exigences: string | null;
   source: "chatbot" | "form" | "admin";
   last_message_at: string | null;

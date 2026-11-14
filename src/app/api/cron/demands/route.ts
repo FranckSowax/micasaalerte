@@ -1,48 +1,31 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   formatAnnonceMessage,
+  formatDigestMessage,
   sendWhatsAppMessage,
   isWahaConfigured,
 } from "@/lib/whatsapp";
-import { sleep } from "@/lib/rate-limit";
+import {
+  DEFAULT_MAX_ALERTS_PER_DAY,
+  DEFAULT_QUIET_END,
+  DEFAULT_QUIET_START,
+  isQuietHour,
+  matchDemand,
+  shouldSend,
+  startOfLocalDayIso,
+} from "@/lib/matching";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import type { Annonce, ClientDemand } from "@/types/database";
 
-function demandMatchesAnnonce(annonce: Annonce, demand: ClientDemand): boolean {
-  if (demand.filter_type_offre?.length && annonce.type_offre) {
-    if (!demand.filter_type_offre.includes(annonce.type_offre)) return false;
-  }
-  if (demand.filter_type_bien?.length && annonce.type_bien) {
-    if (!demand.filter_type_bien.includes(annonce.type_bien)) return false;
-  }
-  if (demand.filter_prix_min && annonce.prix) {
-    if (annonce.prix < demand.filter_prix_min) return false;
-  }
-  if (demand.filter_prix_max && annonce.prix) {
-    if (annonce.prix > demand.filter_prix_max) return false;
-  }
-  if (demand.filter_nb_chambres_min && annonce.nb_chambres) {
-    if (annonce.nb_chambres < demand.filter_nb_chambres_min) return false;
-  }
-  if (demand.filter_quartiers?.length && annonce.quartier) {
-    if (!demand.filter_quartiers.some(q =>
-      annonce.quartier?.toLowerCase().includes(q.toLowerCase())
-    )) return false;
-  }
-  if (demand.filter_ville && annonce.ville) {
-    if (annonce.ville.toLowerCase() !== demand.filter_ville.toLowerCase()) return false;
-  }
-  if (demand.filter_meuble !== null && demand.filter_meuble !== undefined && annonce.meuble !== null) {
-    if (annonce.meuble !== demand.filter_meuble) return false;
-  }
-  return true;
-}
-
-// Appelée en POST par scripts/run-cron.mjs (service cron Railway) ; GET accepté aussi pour un déclenchement manuel.
+// Appelée en POST par le service cron Railway ; GET accepté aussi pour un déclenchement manuel.
 export const dynamic = "force-dynamic";
 export const GET = handleCron;
 export const POST = handleCron;
+
+const RECENT_ANNONCES = 100;
+const DIGEST_MAX_ITEMS = 5;
 
 async function handleCron(request: Request) {
   if (!isAuthorizedCron(request)) {
@@ -54,74 +37,105 @@ async function handleCron(request: Request) {
   }
 
   const supabase = createServiceClient();
+  const now = new Date();
+  const dayStart = startOfLocalDayIso(now);
 
-  // Get all active demands grouped by user
-  const { data: demands } = await supabase
-    .from("client_demands")
-    .select("*")
-    .eq("is_active", true);
+  const { data: demands } = await supabase.from("client_demands").select("*").eq("is_active", true);
 
   if (!demands?.length) {
     return NextResponse.json({ message: "No active demands" });
   }
 
-  // Group by user_id
-  const byUser = new Map<string, typeof demands>();
+  const byUser = new Map<string, ClientDemand[]>();
   for (const d of demands) {
-    const list = byUser.get(d.user_id as string) || [];
-    list.push(d);
-    byUser.set(d.user_id as string, list);
+    const demand = d as unknown as ClientDemand;
+    byUser.set(demand.user_id, [...(byUser.get(demand.user_id) || []), demand]);
   }
 
-  let totalSent = 0;
+  const stats = { totalSent: 0, digests: 0, heldForReview: 0, skippedQuiet: 0, capped: 0, failed: 0 };
 
   for (const [userId, userDemands] of Array.from(byUser.entries())) {
-    // Get recent annonces
-    const { data: annonces } = await supabase
+    // Préfiltrage SQL : annonces immobilières récentes du compte. Les critères de
+    // l'abonné sont ensuite appliqués par matchDemand (bloquants, puis score).
+    const { data: rows } = await supabase
       .from("annonces")
       .select("*")
       .eq("user_id", userId)
       .eq("ai_is_real_estate", true)
+      .neq("status", "archived")
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(RECENT_ANNONCES);
 
-    if (!annonces?.length) continue;
+    const annonces = (rows || []) as unknown as Annonce[];
+    if (!annonces.length) continue;
 
     for (const demand of userDemands) {
-      const typedDemand = demand as unknown as ClientDemand;
+      if (isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {
+        stats.skippedQuiet++;
+        continue;
+      }
 
-      // Get already sent annonce IDs for this demand
-      const { data: alreadySent } = await supabase
+      const { data: sends } = await supabase
         .from("client_demand_sends")
-        .select("annonce_id")
-        .eq("demand_id", typedDemand.id);
+        .select("annonce_id, sent_at, status")
+        .eq("demand_id", demand.id);
 
-      const sentIds = new Set((alreadySent || []).map((s: Record<string, unknown>) => s.annonce_id));
+      // Clé d'unicité abonné + annonce : une annonce déjà tentée n'est jamais renvoyée.
+      const alreadySent = new Set((sends || []).map((s) => s.annonce_id as string));
+      const sentToday = (sends || []).filter(
+        (s) => s.status !== "failed" && typeof s.sent_at === "string" && s.sent_at >= dayStart
+      ).length;
 
+      const candidates: { annonce: Annonce; score: number }[] = [];
       for (const annonce of annonces) {
-        const typedAnnonce = annonce as unknown as Annonce;
+        if (alreadySent.has(annonce.id)) continue;
+        const match = matchDemand(annonce, demand);
+        if (!match.eligible) continue;
+        if (match.needsReview) {
+          stats.heldForReview++;
+          continue;
+        }
+        if (shouldSend(match, demand)) candidates.push({ annonce, score: match.score });
+      }
+      if (!candidates.length) continue;
+      candidates.sort((a, b) => b.score - a.score);
 
-        if (sentIds.has(typedAnnonce.id)) continue;
-        if (!demandMatchesAnnonce(typedAnnonce, typedDemand)) continue;
-
-        // Send
-        const message = formatAnnonceMessage(typedAnnonce);
-        const result = await sendWhatsAppMessage(typedDemand.client_phone, message);
-
-        // Track send
-        await supabase.from("client_demand_sends").insert({
-          demand_id: typedDemand.id,
-          annonce_id: typedAnnonce.id,
-          message_id: result.messageId || null,
-          status: result.success ? "sent" : "failed",
+      const record = (annonceId: string, messageId: string | undefined, success: boolean) =>
+        supabase.from("client_demand_sends").insert({
+          demand_id: demand.id,
+          annonce_id: annonceId,
+          message_id: messageId || null,
+          status: success ? "sent" : "failed",
         });
 
-        if (result.success) totalSent++;
+      if (demand.alert_mode === "digest") {
+        // Résumé périodique : un seul message par jour, regroupant les meilleures annonces.
+        if (sentToday > 0) continue;
+        const picked = candidates.slice(0, DIGEST_MAX_ITEMS).map((c) => c.annonce);
+        const result = await sendWhatsAppMessage(demand.client_phone, formatDigestMessage(picked));
+        for (const annonce of picked) await record(annonce.id, result.messageId, result.success);
+        if (result.success) {
+          stats.digests++;
+          stats.totalSent += picked.length;
+        } else {
+          stats.failed++;
+        }
+        await sleep(500);
+        continue;
+      }
 
+      const remaining = Math.max(0, (demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY) - sentToday);
+      if (candidates.length > remaining) stats.capped += candidates.length - remaining;
+
+      for (const { annonce } of candidates.slice(0, remaining)) {
+        const result = await sendWhatsAppMessage(demand.client_phone, formatAnnonceMessage(annonce));
+        await record(annonce.id, result.messageId, result.success);
+        if (result.success) stats.totalSent++;
+        else stats.failed++;
         await sleep(500); // Avoid WhatsApp rate limits
       }
     }
   }
 
-  return NextResponse.json({ success: true, totalSent });
+  return NextResponse.json({ success: true, ...stats });
 }

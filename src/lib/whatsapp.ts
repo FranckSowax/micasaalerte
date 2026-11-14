@@ -1,6 +1,34 @@
 import type { Annonce } from "@/types/database";
 import { formatPrice, getTypeBienLabel, getTypeOffreLabel } from "./utils";
 
+interface MessageDetails {
+  charges?: number | null;
+  caution?: number | null;
+  disponibilite?: string | null;
+}
+
+function annonceDetails(annonce: Annonce): MessageDetails {
+  const d = (annonce as unknown as { details?: unknown }).details;
+  return d && typeof d === "object" ? (d as MessageDetails) : {};
+}
+
+/**
+ * Résumé groupé de plusieurs annonces (mode « résumé périodique »).
+ * @example formatDigestMessage([annonce1, annonce2])
+ */
+export function formatDigestMessage(annonces: Annonce[]): string {
+  const lines: string[] = [`*${annonces.length} annonce(s) correspondent à votre recherche*`, ""];
+  annonces.forEach((a, i) => {
+    const title = [a.type_offre ? getTypeOffreLabel(a.type_offre) : null, a.type_bien ? getTypeBienLabel(a.type_bien) : null]
+      .filter(Boolean)
+      .join(" - ");
+    const place = [a.quartier, a.ville].filter(Boolean).join(", ");
+    lines.push(`${i + 1}. ${title || "Annonce"}${a.prix ? ` — ${formatPrice(a.prix, a.devise)}` : ""}${place ? ` — ${place}` : ""}`);
+    if (a.fb_post_url) lines.push(`   ${a.fb_post_url}`);
+  });
+  return lines.join("\n");
+}
+
 export function formatAnnonceMessage(annonce: Annonce): string {
   const lines: string[] = [];
 
@@ -19,7 +47,7 @@ export function formatAnnonceMessage(annonce: Annonce): string {
   }
 
   if (annonce.quartier || annonce.ville) {
-    lines.push(`Quartier : ${annonce.quartier ? `${annonce.quartier}, ` : ""}${annonce.ville}`);
+    lines.push(`Lieu : ${[annonce.quartier, annonce.ville].filter(Boolean).join(", ")}`);
   }
 
   const details: string[] = [];
@@ -37,12 +65,19 @@ export function formatAnnonceMessage(annonce: Annonce): string {
     lines.push("");
   }
 
+  const extra = annonceDetails(annonce);
+  if (extra.charges) lines.push(`Charges : ${formatPrice(extra.charges, annonce.devise)}`);
+  if (extra.caution) lines.push(`Caution : ${formatPrice(extra.caution, annonce.devise)}`);
+  if (extra.disponibilite) lines.push(`Disponibilité : ${extra.disponibilite}`);
+
   if (annonce.telephone) lines.push(`Contact : ${annonce.telephone}`);
+  // Aucun contact publié : on renvoie vers l'annonce, sans chercher à en deviner un.
+  if (!annonce.telephone && !annonce.whatsapp && annonce.fb_post_url) lines.push("Contact : via l'annonce (lien ci-dessous)");
   if (annonce.whatsapp) lines.push(`WhatsApp : ${annonce.whatsapp}`);
 
   if (annonce.fb_post_url) {
     lines.push("");
-    lines.push(`Voir sur Facebook : ${annonce.fb_post_url}`);
+    lines.push(`Voir l'annonce : ${annonce.fb_post_url}`);
   }
 
   if (annonce.ai_tags?.length) {

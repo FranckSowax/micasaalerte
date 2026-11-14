@@ -1,6 +1,8 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { interpretClientMessage } from "@/lib/ai";
+import { interpretClientMessage, isAIConfigured } from "@/lib/ai";
+import { matchDemand } from "@/lib/matching";
+import type { Annonce } from "@/types/database";
 import type { ChatbotConversation, ClientDemand } from "@/types/database";
 
 const ONBOARDING_MESSAGES: Record<string, string> = {
@@ -302,7 +304,7 @@ async function handleActiveConversation(
   // AI interpretation for complex messages
   try {
     const kimiKey = process.env.KIMI_API_KEY;
-    if (!kimiKey) {
+    if (!isAIConfigured(kimiKey)) {
       await sendWhatsAppMessage(replyTo, "Service temporairement indisponible. Réessayez plus tard.");
       return;
     }
@@ -318,19 +320,44 @@ async function handleActiveConversation(
           .eq("user_id", userId)
           .eq("ai_is_real_estate", true)
           .order("created_at", { ascending: false })
-          .limit(5);
+          .limit(100);
 
-        if (!annonces?.length) {
+        // Demande explicite du client : on applique ses critères bloquants et on classe
+        // par score, sans retenir les annonces déjà envoyées.
+        let selection = (annonces || []) as unknown as Annonce[];
+        if (demand) {
+          const { data: sends } = await supabase
+            .from("client_demand_sends")
+            .select("annonce_id")
+            .eq("demand_id", demand.id);
+          const seen = new Set((sends || []).map((s) => s.annonce_id as string));
+          selection = selection
+            .filter((a) => !seen.has(a.id))
+            .map((a) => ({ a, m: matchDemand(a, demand) }))
+            .filter((x) => x.m.eligible)
+            .sort((x, y) => y.m.score - x.m.score)
+            .map((x) => x.a);
+        }
+
+        if (!selection.length) {
           await sendWhatsAppMessage(replyTo, "Aucune annonce disponible pour le moment. Vous serez notifié dès qu'une nouvelle annonce correspond à vos critères !");
           return;
         }
 
         const { formatAnnonceMessage } = await import("@/lib/whatsapp");
         let count = 0;
-        for (const a of annonces) {
+        for (const a of selection) {
           if (count >= 3) break;
           const msg = formatAnnonceMessage(a);
-          await sendWhatsAppMessage(replyTo, msg);
+          const sent = await sendWhatsAppMessage(replyTo, msg);
+          if (demand) {
+            await supabase.from("client_demand_sends").insert({
+              demand_id: demand.id,
+              annonce_id: a.id,
+              message_id: sent.messageId || null,
+              status: sent.success ? "sent" : "failed",
+            });
+          }
           count++;
         }
         await sendWhatsAppMessage(replyTo, `${count} annonce(s) envoyée(s). Dites _\"encore\"_ pour en voir plus.`);

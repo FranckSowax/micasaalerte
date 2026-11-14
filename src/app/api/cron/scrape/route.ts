@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { analyzePost, isAIConfigured } from "@/lib/ai";
+import { annonceFieldsFromAnalysis } from "@/lib/annonce-fields";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { NextResponse } from "next/server";
@@ -78,7 +79,7 @@ async function handleCron(request: Request) {
         if (!text || !postId) continue;
 
         // WHY: on mémorise chaque post dans raw_posts, y compris les non-immobiliers.
-        // Sans cela, un cron horaire renverrait les mêmes posts à l IA à chaque passage.
+        // Sans cela, un cron horaire renverrait les mêmes posts à l'IA à chaque passage.
         // Un post en erreur IA (ou resté "pending") est retenté au passage suivant.
         const { data: seen } = await serviceClient
           .from("raw_posts")
@@ -127,7 +128,7 @@ async function handleCron(request: Request) {
         }
 
         try {
-          const analysis = await analyzePost(text, kimiKey);
+          const analysis = await analyzePost(text, kimiKey, group.group_name);
 
           if (rawPostId) {
             await serviceClient
@@ -152,24 +153,7 @@ async function handleCron(request: Request) {
             fb_posted_at: postedAt,
             raw_text: text,
             raw_images: post.photo_url ? [post.photo_url] : [],
-            type_bien: analysis.type_bien,
-            type_offre: analysis.type_offre,
-            prix: analysis.prix,
-            nb_pieces: analysis.nb_pieces,
-            nb_chambres: analysis.nb_chambres,
-            nb_salles_bain: analysis.nb_salles_bain,
-            superficie: analysis.superficie,
-            meuble: analysis.meuble,
-            quartier: analysis.quartier,
-            ville: analysis.ville || "Libreville",
-            adresse_complete: analysis.adresse_complete,
-            telephone: analysis.telephone,
-            whatsapp: analysis.whatsapp,
-            email: analysis.email,
-            ai_confidence: analysis.confidence,
-            ai_summary: analysis.summary,
-            ai_is_real_estate: true,
-            ai_tags: analysis.tags || [],
+            ...(await annonceFieldsFromAnalysis(serviceClient, analysis)),
           }).select("id").single();
 
           if (annonce && rawPostId) {

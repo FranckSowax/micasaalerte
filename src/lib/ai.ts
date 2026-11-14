@@ -1,4 +1,12 @@
 import OpenAI from "openai";
+import {
+  EXTRACTION_PROMPT,
+  sanitizeExtraction,
+  toAnnonceDetails,
+  toTags,
+  type AnnonceDetails,
+  type Extraction,
+} from "./extraction";
 
 // ============================================================
 // Fournisseur IA : OpenRouter (modèle z.ai GLM) si OPENROUTER_API_KEY est défini,
@@ -18,7 +26,7 @@ interface AIProvider {
 
 /**
  * @param legacyKey clé Kimi propre à un utilisateur (profiles.kimi_api_key).
- *                  Ignorée quand OpenRouter est configuré : ce n est pas une clé OpenRouter.
+ *                  Ignorée quand OpenRouter est configuré : ce n'est pas une clé OpenRouter.
  */
 function getAIProvider(legacyKey?: string | null): AIProvider {
   const openRouterKey = process.env.OPENROUTER_API_KEY;
@@ -60,41 +68,20 @@ function extractJson(content: string): string {
   return start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
 }
 
-const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse d'annonces immobilières au Gabon.
-Analyse le post Facebook suivant et extrais les informations en JSON strict.
-
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans commentaires) avec ces champs :
-- is_real_estate (boolean) : est-ce une annonce immobilière ?
-- type_offre: "location" | "vente" | "colocation" | "sous-location" | "recherche" | null
-- type_bien: "appartement" | "maison" | "studio" | "chambre" | "terrain" | "bureau" | "villa" | null
-- prix (number en FCFA, "150k" = 150000, "1M" = 1000000, null si non spécifié)
-- nb_pieces (number | null)
-- nb_chambres (number | null)
-- nb_salles_bain (number | null)
-- superficie (number en m² | null)
-- meuble (boolean | null)
-- quartier (string | null)
-- ville (string, défaut "Libreville")
-- adresse_complete (string | null)
-- telephone (string | null)
-- whatsapp (string | null)
-- email (string | null)
-- summary (string, 1-2 phrases de résumé)
-- confidence (number 0-1)
-- tags (string[], ex: "climatisé", "parking", "gardien", "neuf", "eau chaude", etc.)`;
-
+/** Résultat d'une analyse, au format des colonnes de la table `annonces`. */
 export interface AIExtractionResult {
   is_real_estate: boolean;
   type_offre: string | null;
   type_bien: string | null;
   prix: number | null;
+  devise: string | null;
   nb_pieces: number | null;
   nb_chambres: number | null;
   nb_salles_bain: number | null;
   superficie: number | null;
   meuble: boolean | null;
   quartier: string | null;
-  ville: string;
+  ville: string | null;
   adresse_complete: string | null;
   telephone: string | null;
   whatsapp: string | null;
@@ -102,23 +89,52 @@ export interface AIExtractionResult {
   summary: string;
   confidence: number;
   tags: string[];
+  /** Fiche détaillée : charges, caution, confiance par champ, extraits source, champs à vérifier. */
+  details: AnnonceDetails;
 }
 
+// La colonne `type_offre` garde son vocabulaire historique ; la transaction fine reste dans `details`.
+function toTypeOffre(transaction: Extraction["transaction"]): string | null {
+  if (transaction === "location_meublee") return "location";
+  if (transaction === "inconnu") return null;
+  return transaction;
+}
+
+function globalConfidence(e: Extraction): number {
+  const values = ["transaction", "type", "prix"].map((k) => e.confiance[k]).filter((v) => typeof v === "number");
+  if (!values.length) return e.a_verifier.length ? 0.4 : 0.7;
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  return Math.round(Math.max(0, mean - 0.1 * e.rejets.length) * 100) / 100;
+}
+
+/**
+ * Analyse le texte d'une publication et renvoie la fiche normalisée de l'annonce.
+ * Les contacts viennent d'expressions régulières, jamais du modèle ; tout champ
+ * important non justifié par un extrait de la source est remis à null.
+ *
+ * @param context nom du groupe ou du compte source : admis comme preuve (ex. pour la ville)
+ * @example
+ * const fiche = await analyzePost("Studio meublé 150k à Okala, 077 12 34 56");
+ */
 export async function analyzePost(
   text: string,
-  apiKey?: string
+  apiKey?: string | null,
+  context?: string | null
 ): Promise<AIExtractionResult> {
   const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
 
   const response = await client.chat.completions.create({
     model,
     ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-    max_tokens: 1024 + reasoningBudget,
+    max_tokens: 1400 + reasoningBudget,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Analyse ce post Facebook :\n\n${text}` },
+      { role: "system", content: EXTRACTION_PROMPT },
+      {
+        role: "user",
+        content: `${context ? `Source : ${context}\n\n` : ""}Texte de la publication :\n\n${text}`,
+      },
     ],
-    temperature: 0.1,
+    temperature: 0,
   });
 
   const content = response.choices[0]?.message?.content;
@@ -126,7 +142,30 @@ export async function analyzePost(
     throw new Error("Pas de réponse de l'IA");
   }
 
-  return JSON.parse(extractJson(content)) as AIExtractionResult;
+  const e = sanitizeExtraction(JSON.parse(extractJson(content)), text, context || "");
+
+  return {
+    is_real_estate: e.est_immobilier,
+    type_offre: toTypeOffre(e.transaction),
+    type_bien: e.type,
+    prix: e.prix,
+    devise: e.devise === "XAF" ? "FCFA" : e.devise,
+    nb_pieces: e.nb_pieces,
+    nb_chambres: e.nb_chambres,
+    nb_salles_bain: e.nb_salles_bain,
+    superficie: e.surface_m2,
+    meuble: e.meuble,
+    quartier: e.quartier,
+    ville: e.ville,
+    adresse_complete: e.adresse,
+    telephone: e.telephones[0] ?? null,
+    whatsapp: e.whatsapp,
+    email: e.emails[0] ?? null,
+    summary: e.description || "",
+    confidence: globalConfidence(e),
+    tags: toTags(e),
+    details: toAnnonceDetails(e),
+  };
 }
 
 // Chatbot intent interpretation

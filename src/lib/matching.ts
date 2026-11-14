@@ -1,0 +1,204 @@
+import type { Annonce, ClientDemand } from "@/types/database";
+import { normalizeText } from "./extraction";
+
+// Matching abonné ↔ annonce, entièrement déterministe : l'IA n'intervient pas ici.
+//  1. critères bloquants : une contradiction écarte l'annonce ;
+//  2. score 0-100 sur les préférences ;
+//  3. envoi si le score atteint le seuil, sauf doute sur un champ décisif (à vérifier).
+// Une annonce incomplète n'est pas rejetée : un champ inconnu n'est jamais une contradiction.
+
+export const DEFAULT_MIN_SCORE = 50;
+export const DEFAULT_MAX_ALERTS_PER_DAY = 5;
+export const DEFAULT_QUIET_START = 21;
+export const DEFAULT_QUIET_END = 7;
+export const ALERT_TIMEZONE = "Africa/Libreville";
+
+/** Valeur attribuée à une préférence quand l'annonce ne dit rien sur ce point. */
+const UNKNOWN = 0.5;
+const WEIGHTS = { quartier: 35, meuble: 15, climatise: 10, parking: 10, surface: 10, motsCles: 20 } as const;
+const EXCLUDED_KEYWORD_PENALTY = 30;
+const UNCERTAIN_PENALTY = 10;
+
+export interface MatchResult {
+  /** Aucun critère bloquant n'est contredit. */
+  eligible: boolean;
+  /** Critères bloquants contredits (annonce écartée). */
+  blockedBy: string[];
+  /** Critères bloquants impossibles à vérifier faute d'information dans l'annonce. */
+  uncertain: string[];
+  /** Doute sur le prix, la ville ou la transaction : à valider par un humain avant envoi. */
+  needsReview: boolean;
+  score: number;
+  /** Ce qui a pesé dans le score, pour l'explication. */
+  reasons: string[];
+}
+
+interface DetailsLike {
+  climatise?: boolean | null;
+  parking?: boolean | null;
+}
+
+function detailsOf(annonce: Annonce): DetailsLike {
+  const d = (annonce as unknown as { details?: unknown }).details;
+  return d && typeof d === "object" ? (d as DetailsLike) : {};
+}
+
+function hasTag(annonce: Annonce, needle: string): boolean {
+  return (annonce.ai_tags || []).some((t) => normalizeText(t).includes(needle));
+}
+
+/** Préférences souples de l'abonné : colonnes dédiées, complétées par le texte libre « exigences ». */
+export function demandPreferences(demand: ClientDemand) {
+  const exigences = normalizeText(demand.exigences || "");
+  const wants = (column: boolean | null | undefined, word: string): boolean | null =>
+    typeof column === "boolean" ? column : exigences.includes(word) ? true : null;
+
+  return {
+    quartiers: (demand.filter_quartiers || []).map(normalizeText).filter(Boolean),
+    meuble: wants(demand.filter_meuble, "meubl"),
+    climatise: wants(demand.filter_climatise, "climatis"),
+    parking: wants(demand.filter_parking, "parking"),
+    surfaceMin: demand.filter_surface_min ?? null,
+    keywordsInclude: (demand.keywords_include || []).map(normalizeText).filter(Boolean),
+    keywordsExclude: (demand.keywords_exclude || []).map(normalizeText).filter(Boolean),
+    minScore: demand.min_score ?? DEFAULT_MIN_SCORE,
+  };
+}
+
+function boolScore(wanted: boolean, actual: boolean | null | undefined): number {
+  if (actual === null || actual === undefined) return UNKNOWN;
+  return actual === wanted ? 1 : 0;
+}
+
+/**
+ * Compare une annonce aux critères d'un abonné.
+ *
+ * @example
+ * const m = matchDemand(annonce, demand);
+ * if (shouldSend(m, demand)) envoyer(annonce);
+ */
+export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult {
+  const blockedBy: string[] = [];
+  const uncertain: string[] = [];
+  const reasons: string[] = [];
+  const prefs = demandPreferences(demand);
+
+  // ---------- 1. Critères bloquants ----------
+  if (demand.filter_type_offre?.length) {
+    if (!annonce.type_offre) uncertain.push("transaction");
+    else if (!demand.filter_type_offre.includes(annonce.type_offre)) blockedBy.push("transaction");
+  }
+
+  if (demand.filter_type_bien?.length) {
+    if (!annonce.type_bien) uncertain.push("type");
+    else if (!demand.filter_type_bien.includes(annonce.type_bien)) blockedBy.push("type");
+  }
+
+  if (demand.filter_prix_min || demand.filter_prix_max) {
+    if (!annonce.prix) uncertain.push("prix");
+    else if (demand.filter_prix_min && annonce.prix < demand.filter_prix_min) blockedBy.push("budget_min");
+    else if (demand.filter_prix_max && annonce.prix > demand.filter_prix_max) blockedBy.push("budget_max");
+  }
+
+  if (demand.filter_nb_chambres_min) {
+    if (annonce.nb_chambres === null || annonce.nb_chambres === undefined) uncertain.push("chambres");
+    else if (annonce.nb_chambres < demand.filter_nb_chambres_min) blockedBy.push("chambres");
+  }
+
+  if (demand.filter_ville) {
+    if (annonce.ville) {
+      if (normalizeText(annonce.ville) !== normalizeText(demand.filter_ville)) blockedBy.push("ville");
+    } else if (!annonce.quartier) {
+      // Ni ville ni quartier : impossible de situer le bien.
+      uncertain.push("ville");
+    }
+  }
+
+  // ---------- 2. Score des préférences ----------
+  let weightSum = 0;
+  let earned = 0;
+  const add = (weight: number, value: number, label: string) => {
+    weightSum += weight;
+    earned += weight * value;
+    reasons.push(`${label} : ${value === 1 ? "oui" : value === 0 ? "non" : "inconnu"}`);
+  };
+
+  if (prefs.quartiers.length) {
+    const quartier = annonce.quartier ? normalizeText(annonce.quartier) : "";
+    const value = !quartier ? UNKNOWN : prefs.quartiers.some((q) => quartier.includes(q) || q.includes(quartier)) ? 1 : 0;
+    add(WEIGHTS.quartier, value, "quartier préféré");
+  }
+  if (prefs.meuble !== null) add(WEIGHTS.meuble, boolScore(prefs.meuble, annonce.meuble), "meublé");
+
+  const details = detailsOf(annonce);
+  if (prefs.climatise !== null) {
+    const actual = details.climatise ?? (hasTag(annonce, "climatis") ? true : null);
+    add(WEIGHTS.climatise, boolScore(prefs.climatise, actual), "climatisation");
+  }
+  if (prefs.parking !== null) {
+    const actual = details.parking ?? (hasTag(annonce, "parking") ? true : null);
+    add(WEIGHTS.parking, boolScore(prefs.parking, actual), "parking");
+  }
+  if (prefs.surfaceMin) {
+    const value = !annonce.superficie ? UNKNOWN : annonce.superficie >= prefs.surfaceMin ? 1 : 0;
+    add(WEIGHTS.surface, value, "surface");
+  }
+
+  const text = ` ${normalizeText(`${annonce.raw_text || ""} ${annonce.ai_summary || ""} ${(annonce.ai_tags || []).join(" ")}`)} `;
+  if (prefs.keywordsInclude.length) {
+    const found = prefs.keywordsInclude.filter((k) => text.includes(` ${k} `)).length;
+    weightSum += WEIGHTS.motsCles;
+    earned += WEIGHTS.motsCles * (found / prefs.keywordsInclude.length);
+    reasons.push(`mots-clés favoris : ${found}/${prefs.keywordsInclude.length}`);
+  }
+
+  let score = weightSum > 0 ? (100 * earned) / weightSum : 100;
+
+  const excluded = prefs.keywordsExclude.filter((k) => text.includes(` ${k} `));
+  if (excluded.length) {
+    score -= EXCLUDED_KEYWORD_PENALTY * excluded.length;
+    reasons.push(`mots-clés exclus présents : ${excluded.join(", ")}`);
+  }
+  // Type ou nombre de chambres inconnus : l'annonce reste éligible, mais passe après les autres.
+  score -= UNCERTAIN_PENALTY * uncertain.filter((u) => u === "type" || u === "chambres").length;
+
+  const needsReview = uncertain.some((u) => u === "prix" || u === "ville" || u === "transaction");
+
+  return {
+    eligible: blockedBy.length === 0,
+    blockedBy,
+    uncertain,
+    needsReview,
+    score: Math.round(Math.min(100, Math.max(0, score))),
+    reasons,
+  };
+}
+
+/** Décision d'envoi automatique : éligible, pas de doute décisif, score au-dessus du seuil. */
+export function shouldSend(match: MatchResult, demand: ClientDemand): boolean {
+  return match.eligible && !match.needsReview && match.score >= demandPreferences(demand).minScore;
+}
+
+/** Heure locale (0-23) dans le fuseau des alertes. */
+export function localHour(date: Date, timeZone = ALERT_TIMEZONE): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(date));
+}
+
+/**
+ * Plage silencieuse, bornes en heures locales ; gère le passage de minuit (21 → 7).
+ * @example isQuietHour(new Date(), 21, 7)
+ */
+export function isQuietHour(date: Date, start = DEFAULT_QUIET_START, end = DEFAULT_QUIET_END): boolean {
+  if (start === end) return false;
+  const hour = localHour(date);
+  return start < end ? hour >= start && hour < end : hour >= start || hour < end;
+}
+
+/** Début de la journée locale en cours, en ISO UTC : borne du plafond d'alertes quotidien. */
+export function startOfLocalDayIso(date: Date, timeZone = ALERT_TIMEZONE): string {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  // Décalage du fuseau à cet instant, déduit de l'écart entre l'heure locale et l'heure UTC.
+  const diff = (localHour(date, timeZone) - date.getUTCHours() + 24) % 24;
+  const offset = diff > 12 ? diff - 24 : diff;
+  return new Date(Date.parse(`${day}T00:00:00Z`) - offset * 3_600_000).toISOString();
+}

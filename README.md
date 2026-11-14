@@ -90,6 +90,23 @@ immo-tracker/
 - WhatsApp via WAHA (auto-heberge)
 - Railway (deploiement)
 
+## Extraction et matching
+
+- **Fiche normalisee** (`src/lib/extraction.ts`) : l'IA remplit un schema JSON ; tout champ important
+  (prix, charges, caution, ville, quartier, adresse) doit etre justifie par un extrait present mot pour mot
+  dans la publication, sinon il est remis a `null`. Aucune ville par defaut.
+- **Contacts** (`src/lib/contacts.ts`) : telephones, liens WhatsApp et e-mails releves par expressions
+  regulieres et normalises au format international ; l'IA ne fournit jamais de contact.
+- **Matching** (`src/lib/matching.ts`) : deterministe, sans IA. Criteres bloquants (ville, transaction,
+  budget, type, chambres), puis score 0-100 sur les preferences (quartiers, meuble, climatisation,
+  parking, surface, mots-cles). Envoi si le score atteint le seuil de l'abonne (50 par defaut) ;
+  doute sur le prix, la ville ou la transaction = annonce retenue pour verification.
+- **Alertes** : plafond par jour (5), plage silencieuse (21h-7h, heure de Libreville), mode immediat ou
+  resume quotidien, jamais deux fois la meme annonce au meme abonne.
+- Non couvert pour l'instant : OCR des photos, transcription audio des videos, distance geographique.
+
+Tests : `npm test` (Vitest).
+
 ## Deploiement sur Railway
 
 Deux services dans le meme projet Railway, tous deux branches sur ce depot.

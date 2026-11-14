@@ -1,5 +1,6 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { analyzePost } from "@/lib/ai";
+import { annonceFieldsFromAnalysis } from "@/lib/annonce-fields";
 import { extractImages, fetchReshareImages } from "@/lib/extract-images";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
@@ -148,24 +149,7 @@ export async function POST(request: Request) {
               fb_posted_at: postedAt,
               raw_text: text,
               raw_images: uniqueImages,
-              type_bien: analysis.type_bien,
-              type_offre: analysis.type_offre,
-              prix: analysis.prix,
-              nb_pieces: analysis.nb_pieces,
-              nb_chambres: analysis.nb_chambres,
-              nb_salles_bain: analysis.nb_salles_bain,
-              superficie: analysis.superficie,
-              meuble: analysis.meuble,
-              quartier: analysis.quartier,
-              ville: analysis.ville || "Libreville",
-              adresse_complete: analysis.adresse_complete,
-              telephone: analysis.telephone,
-              whatsapp: analysis.whatsapp,
-              email: analysis.email,
-              ai_confidence: analysis.confidence,
-              ai_summary: analysis.summary,
-              ai_is_real_estate: true,
-              ai_tags: analysis.tags || [],
+              ...(await annonceFieldsFromAnalysis(serviceClient, analysis)),
             }).select("id").single();
 
             if (annonce) {
