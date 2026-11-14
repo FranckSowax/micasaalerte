@@ -384,6 +384,11 @@ export interface ClientDemand {
   /** Plage silencieuse, en heures locales (Africa/Libreville). */
   quiet_start?: number | null;
   quiet_end?: number | null;
+  /** Abonnement : fin de l'essai gratuit de 24 h et fin de la période payée (migration). */
+  trial_ends_at?: string | null;
+  paid_until?: string | null;
+  expiry_notified_at?: string | null;
+  access_token?: string | null;
   exigences: string | null;
   source: "chatbot" | "form" | "admin";
   last_message_at: string | null;

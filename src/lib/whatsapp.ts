@@ -49,6 +49,44 @@ export function formatClientLinkMessage(params: { name?: string | null; count?: 
   return lines.join("\n");
 }
 
+/**
+ * Message de fin d'accès (essai ou abonnement) : invite à renouveler depuis l'espace client.
+ *
+ * @example formatAccessEndedMessage({ name: "Awa", trial: true, link, price: 1000, days: 2 })
+ */
+export function formatAccessEndedMessage(params: { name?: string | null; trial: boolean; link: string; price: number; days: number }): string {
+  const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
+  return [
+    "*Mi Casa Alerte*",
+    "",
+    hello,
+    params.trial ? "Votre essai gratuit de 24 h est terminé." : "Votre abonnement est terminé.",
+    `Pour continuer à recevoir les annonces : ${params.price.toLocaleString("fr-FR")} FCFA pour ${params.days} jours.`,
+    "",
+    "Renouvelez depuis votre espace :",
+    params.link,
+  ].join("\n");
+}
+
+/**
+ * Confirmation d'un paiement validé, avec la nouvelle date de fin.
+ *
+ * @example formatSubscriptionActivatedMessage({ name: "Awa", until: "mardi 17 novembre à 13:00", link })
+ */
+export function formatSubscriptionActivatedMessage(params: { name?: string | null; until: string; link: string }): string {
+  const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
+  return [
+    "*Mi Casa Alerte*",
+    "",
+    hello,
+    "Votre paiement est validé, merci.",
+    `Vous recevez les annonces jusqu'au ${params.until}.`,
+    "",
+    "Votre espace :",
+    params.link,
+  ].join("\n");
+}
+
 export function formatAnnonceMessage(annonce: Annonce): string {
   const lines: string[] = [];
 

@@ -1,18 +1,17 @@
-import { createServiceClient } from "@/lib/supabase/server";
-import { checkDevice, DEVICE_COOKIE, DEVICE_COOKIE_MAX_AGE, generateDeviceId, hashDevice, isValidToken } from "@/lib/client-access";
+import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
+import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { checkRateLimit, getClientIp } from "@/lib/request-limit";
-import { cookies } from "next/headers";
+import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 // Espace client : annonces envoyées à un abonné, accessibles par son lien personnel.
 // Route PUBLIQUE protégée par le jeton du lien et par l'appareil qui l'a ouvert en premier.
+// GET : annonces, critères et état de l'abonnement ; POST : tri d'une annonce ;
+// PATCH : modification des critères de recherche par le client.
 
 export const dynamic = "force-dynamic";
 
-const READ_LIMIT = 60; // requêtes par minute et par adresse IP
-const WINDOW_MS = 60_000;
 const MAX_ANNONCES = 200;
 
 const ActionSchema = z.object({
@@ -24,58 +23,13 @@ const STATUS_BY_ACTION = { keep: "kept", remove: "removed", reset: "new" } as co
 
 type Row = Record<string, unknown>;
 
-async function loadDemand(token: string) {
-  const supabase = createServiceClient();
-  const { data } = await supabase.from("client_demands").select("*").eq("access_token", token).maybeSingle();
-  return { supabase, demand: data as Row | null };
-}
-
 function digits(value: unknown): string | null {
   const d = typeof value === "string" ? value.replace(/\D/g, "") : "";
   return d.length >= 8 ? d : null;
 }
 
-/** Vérifie le jeton et l'appareil. Renvoie la demande, ou la réponse d'erreur à retourner. */
-async function authorize(request: Request, token: string) {
-  if (!isValidToken(token)) return { error: NextResponse.json({ error: "Lien invalide" }, { status: 404 }) };
-
-  const limit = checkRateLimit(`client:${getClientIp(request)}`, READ_LIMIT, WINDOW_MS);
-  if (!limit.allowed) {
-    return { error: NextResponse.json({ error: "Trop de requêtes" }, { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }) };
-  }
-
-  const { supabase, demand } = await loadDemand(token);
-  if (!demand) return { error: NextResponse.json({ error: "Lien invalide ou expiré" }, { status: 404 }) };
-
-  const deviceId = cookies().get(DEVICE_COOKIE)?.value ?? null;
-  const check = checkDevice(demand.device_hash as string | null, deviceId);
-  if (check === "other_device") {
-    return { error: NextResponse.json({ error: "Ce lien est déjà utilisé sur un autre appareil.", code: "other_device" }, { status: 403 }) };
-  }
-
-  let newDeviceId: string | null = null;
-  if (check === "bind") {
-    newDeviceId = deviceId || generateDeviceId();
-    await supabase.from("client_demands").update({ device_hash: hashDevice(newDeviceId) }).eq("id", demand.id as string);
-  }
-  return { supabase, demand, newDeviceId };
-}
-
-function withDeviceCookie(response: NextResponse, deviceId: string | null) {
-  if (deviceId) {
-    response.cookies.set(DEVICE_COOKIE, deviceId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: DEVICE_COOKIE_MAX_AGE,
-      path: "/",
-    });
-  }
-  return response;
-}
-
 export async function GET(request: Request, { params }: { params: { token: string } }) {
-  const auth = await authorize(request, params.token);
+  const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;
 
@@ -122,10 +76,11 @@ export async function GET(request: Request, { params }: { params: { token: strin
     });
   }
 
+  const hasPoint = typeof demand.geo_lat === "number" && typeof demand.geo_lon === "number";
   const radiusKm = demand.geo_radius_km && Number(demand.geo_radius_km) > 0 ? Number(demand.geo_radius_km) : DEFAULT_RADIUS_KM;
   const zones: { lat: number; lon: number; radiusKm: number; label: string }[] = [];
-  if (typeof demand.geo_lat === "number" && typeof demand.geo_lon === "number") {
-    zones.push({ lat: demand.geo_lat, lon: demand.geo_lon, radiusKm, label: "Votre secteur" });
+  if (hasPoint) {
+    zones.push({ lat: demand.geo_lat as number, lon: demand.geo_lon as number, radiusKm, label: "Votre secteur" });
   } else {
     for (const q of (demand.filter_quartiers as string[] | null) || []) {
       const p = locatePlace(q, ["quartier", "localite"]);
@@ -133,9 +88,28 @@ export async function GET(request: Request, { params }: { params: { token: strin
     }
   }
 
+  // Table absente (migration non exécutée) : la requête échoue et on n'affiche rien en attente.
+  const { data: pending } = await supabase
+    .from("subscription_payments")
+    .select("id")
+    .eq("demand_id", demand.id as string)
+    .eq("status", "pending")
+    .limit(1);
+
+  const state = subscriptionState(demand as Parameters<typeof subscriptionState>[0]);
+
   return withDeviceCookie(
     NextResponse.json({
       clientName: demand.client_name,
+      subscription: {
+        status: state.status,
+        endsAt: state.endsAt,
+        price: SUBSCRIPTION_PRICE_FCFA,
+        days: SUBSCRIPTION_DAYS,
+        trialHours: TRIAL_HOURS,
+        paymentInfo: paymentInfo(),
+        pendingPayment: !!pending?.length,
+      },
       criteria: {
         typeOffre: demand.filter_type_offre || [],
         typeBien: demand.filter_type_bien || [],
@@ -143,6 +117,10 @@ export async function GET(request: Request, { params }: { params: { token: strin
         prixMax: demand.filter_prix_max,
         chambresMin: demand.filter_nb_chambres_min,
         quartiers: demand.filter_quartiers || [],
+        exigences: demand.exigences || "",
+        geoLat: hasPoint ? demand.geo_lat : null,
+        geoLon: hasPoint ? demand.geo_lon : null,
+        radiusKm: hasPoint ? radiusKm : null,
       },
       zones,
       annonces: items,
@@ -152,7 +130,7 @@ export async function GET(request: Request, { params }: { params: { token: strin
 }
 
 export async function POST(request: Request, { params }: { params: { token: string } }) {
-  const auth = await authorize(request, params.token);
+  const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;
 
@@ -170,4 +148,30 @@ export async function POST(request: Request, { params }: { params: { token: stri
     return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
   return withDeviceCookie(NextResponse.json({ success: true, status: STATUS_BY_ACTION[parsed.data.action] }), newDeviceId);
+}
+
+export async function PATCH(request: Request, { params }: { params: { token: string } }) {
+  const auth = await authorizeClient(request, params.token);
+  if (auth.error) return auth.error;
+  const { supabase, demand, newDeviceId } = auth;
+
+  const parsed = CriteriaSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    const field = String(parsed.error.issues[0]?.path[0] ?? "");
+    return NextResponse.json({ error: CRITERIA_FIELD_MESSAGES[field] || "Critères invalides" }, { status: 400 });
+  }
+
+  // Les annonces déjà reçues restent dans l'espace ; les nouveaux critères s'appliquent
+  // aux prochains envois.
+  const { filters, zone } = criteriaToRow(parsed.data);
+  const { error } = await supabase
+    .from("client_demands")
+    .update({ ...filters, ...zone, last_message_at: new Date().toISOString() })
+    .eq("id", demand.id as string);
+
+  if (error) {
+    console.error("Client criteria update failed:", error.message);
+    return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
+  }
+  return withDeviceCookie(NextResponse.json({ success: true }), newDeviceId);
 }

@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
-import { formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
+import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
+import { needsExpiryNotice, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
 import {
   DEFAULT_MAX_ALERTS_PER_DAY,
   DEFAULT_QUIET_END,
@@ -16,9 +17,11 @@ import { NextResponse } from "next/server";
 import type { Annonce, ClientDemand } from "@/types/database";
 
 // Alertes aux abonnés, à lancer toutes les heures.
-// Pour chaque abonné : on cherche les annonces récentes qui correspondent à ses critères
-// et qu'il n'a pas encore reçues, on les ajoute à son espace personnel, puis on lui envoie
-// UN message WhatsApp contenant son lien. Pas de message s'il n'y a rien de nouveau.
+// Pour chaque abonné dont l'accès est en cours (essai de 24 h ou période payée) : on cherche
+// les annonces récentes qui correspondent à ses critères et qu'il n'a pas encore reçues, on
+// les ajoute à son espace personnel, puis on lui envoie UN message WhatsApp contenant son
+// lien. Pas de message s'il n'y a rien de nouveau. Un abonné dont l'accès est terminé ne
+// reçoit plus d'annonces : il est prévenu une fois, avec le lien pour renouveler.
 // Appelée en POST par un service cron ; GET accepté aussi pour un déclenchement manuel.
 export const dynamic = "force-dynamic";
 export const GET = handleCron;
@@ -28,9 +31,19 @@ const RECENT_ANNONCES = 200;
 /** Annonces ajoutées à l'espace d'un abonné par passage, les mieux notées d'abord. */
 const MAX_PER_RUN = 10;
 
+type Supabase = ReturnType<typeof createServiceClient>;
+
 function versionOf(annonce: Annonce): number {
   const details = (annonce as unknown as { details?: { version?: unknown } }).details;
   return typeof details?.version === "number" ? details.version : 1;
+}
+
+/** Lien personnel : créé au premier besoin, puis réutilisé. Null si la migration SQL manque. */
+async function ensureToken(supabase: Supabase, demand: ClientDemand): Promise<string | null> {
+  if (demand.access_token) return demand.access_token;
+  const token = generateAccessToken();
+  const { error } = await supabase.from("client_demands").update({ access_token: token }).eq("id", demand.id);
+  return error ? null : token;
 }
 
 async function handleCron(request: Request) {
@@ -58,7 +71,18 @@ async function handleCron(request: Request) {
     byUser.set(demand.user_id, [...(byUser.get(demand.user_id) || []), demand]);
   }
 
-  const stats = { clients: demands.length, messagesSent: 0, annoncesAdded: 0, heldForReview: 0, skippedQuiet: 0, capped: 0, failed: 0, migrationNeeded: false };
+  const stats = {
+    clients: demands.length,
+    messagesSent: 0,
+    annoncesAdded: 0,
+    heldForReview: 0,
+    skippedQuiet: 0,
+    capped: 0,
+    expired: 0,
+    expiryNotices: 0,
+    failed: 0,
+    migrationNeeded: false,
+  };
 
   for (const [userId, userDemands] of Array.from(byUser.entries())) {
     // Préfiltrage SQL : annonces immobilières récentes et non archivées du compte. Les critères
@@ -73,13 +97,43 @@ async function handleCron(request: Request) {
       .limit(RECENT_ANNONCES);
 
     const annonces = (rows || []) as unknown as Annonce[];
-    if (!annonces.length) continue;
 
     for (const demand of userDemands) {
       if (isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {
         stats.skippedQuiet++;
         continue;
       }
+
+      // Accès terminé (essai ou abonnement) : plus d'annonces, un seul message pour renouveler.
+      if (subscriptionState(demand, now).status === "expired") {
+        stats.expired++;
+        if (!needsExpiryNotice(demand, now)) continue;
+        const token = await ensureToken(supabase, demand);
+        if (!token) {
+          stats.migrationNeeded = true;
+          continue;
+        }
+        const notice = await sendWhatsAppMessage(
+          demand.client_phone,
+          formatAccessEndedMessage({
+            name: demand.client_name,
+            trial: !demand.paid_until,
+            link: clientLink(token),
+            price: SUBSCRIPTION_PRICE_FCFA,
+            days: SUBSCRIPTION_DAYS,
+          })
+        );
+        if (notice.success) {
+          await supabase.from("client_demands").update({ expiry_notified_at: now.toISOString() }).eq("id", demand.id);
+          stats.expiryNotices++;
+          await sleep(1000);
+        } else {
+          stats.failed++;
+        }
+        continue;
+      }
+
+      if (!annonces.length) continue;
 
       const { data: sends } = await supabase.from("client_demand_sends").select("*").eq("demand_id", demand.id);
 
@@ -112,16 +166,11 @@ async function handleCron(request: Request) {
       if (candidates.length > picked.length) stats.capped += candidates.length - picked.length;
       if (!picked.length) continue;
 
-      // Lien personnel : créé à la première alerte, puis réutilisé.
-      let token = (demand as unknown as { access_token?: string | null }).access_token || null;
+      const token = await ensureToken(supabase, demand);
       if (!token) {
-        token = generateAccessToken();
-        const { error } = await supabase.from("client_demands").update({ access_token: token }).eq("id", demand.id);
-        if (error) {
-          // Colonne access_token absente : la migration SQL n'a pas été exécutée.
-          stats.migrationNeeded = true;
-          continue;
-        }
+        // Colonne access_token absente : la migration SQL n'a pas été exécutée.
+        stats.migrationNeeded = true;
+        continue;
       }
 
       // WHY: on envoie d'abord, on enregistre ensuite. Si l'envoi échoue, rien n'est marqué

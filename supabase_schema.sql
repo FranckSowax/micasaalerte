@@ -609,3 +609,33 @@ END $$;
 -- L'ancienne valeur par défaut (5) est relevée à 30 ; aucun écran ne permettait de la régler.
 ALTER TABLE client_demands ALTER COLUMN max_alerts_per_day SET DEFAULT 30;
 UPDATE client_demands SET max_alerts_per_day = 30 WHERE max_alerts_per_day = 5;
+
+-- ============================================================
+-- ABONNEMENT CLIENT (rejouable)
+-- ============================================================
+-- Essai gratuit de 24 h à la création de la demande, puis 1 000 FCFA pour 2 jours.
+-- Les clients déjà inscrits au moment de la migration reçoivent eux aussi 24 h d'essai.
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT (now() + interval '24 hours');
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS paid_until TIMESTAMPTZ;
+-- Dernier message « accès terminé » envoyé : un seul par période.
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS expiry_notified_at TIMESTAMPTZ;
+
+-- Paiements déclarés par les clients (référence Mobile Money) et validés par l'agent.
+CREATE TABLE IF NOT EXISTS subscription_payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    demand_id UUID REFERENCES client_demands(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+    amount INTEGER NOT NULL DEFAULT 1000,
+    days INTEGER NOT NULL DEFAULT 2,
+    reference TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected')),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    confirmed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_demand ON subscription_payments(demand_id, status);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id, status);
+
+ALTER TABLE subscription_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can CRUD own subscription payments" ON subscription_payments;
+CREATE POLICY "Users can CRUD own subscription payments" ON subscription_payments
+    FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

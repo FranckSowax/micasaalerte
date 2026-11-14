@@ -124,7 +124,15 @@ publication.
   les boutons WhatsApp, Appeler, Voir sur Facebook/TikTok, puis Conserver (vert) et Supprimer (rouge).
   Le lien est lie au premier appareil qui l'ouvre (cookie) : ouvert ailleurs, il est refuse, et le client
   peut demander un nouveau lien, envoye uniquement sur son numero WhatsApp (l'ancien est alors invalide).
-  Cette route n'est appelee par aucun cron tant qu'on ne l'a pas planifiee (ex. toutes les heures).
+  Elle est appelee toutes les heures par le service Railway `cron-alertes`.
+- **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
+  1 000 FCFA pour 2 jours. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp
+  l'invite a renouveler. Dans son espace, il lit les consignes de paiement (`SUBSCRIPTION_PAYMENT_INFO`),
+  paie par Mobile Money et saisit la reference de la transaction. L'agent verifie puis valide dans
+  Clients (« Valider le paiement » ou « Activer 2 jours ») : les jours s'ajoutent a ce qui reste et le
+  client est prevenu sur WhatsApp. Aucun paiement en ligne automatique pour l'instant.
+- **Modification des criteres** : depuis son espace, le client modifie type, budget, chambres, secteur et
+  exigences ; les nouveaux criteres s'appliquent aux envois suivants.
 
 - **Perimetre** : seules les offres situees au Gabon deviennent des annonces. Les recherches de biens
   (« je cherche un studio ») et les biens a l'etranger sont ecartes.

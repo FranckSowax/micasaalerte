@@ -1,16 +1,14 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
+import { BUDGET_ISSUE, budgetIsCoherent, CRITERIA_FIELD_MESSAGES, criteriaShape, criteriaToRow } from "@/lib/demand-schema";
+import { generateAccessToken } from "@/lib/client-access";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 // Route PUBLIQUE (formulaire /demande/[userId]) qui écrit avec la clé service :
 // tout ce qui entre est validé et limité en débit avant de toucher la base.
 
-const TYPE_OFFRE = ["location", "vente", "colocation"] as const;
-const TYPE_BIEN = ["appartement", "maison", "studio", "villa", "chambre", "terrain"] as const;
-
 const MAX_BODY_BYTES = 10_000;
-const MAX_PRIX = 100_000_000_000; // 100 milliards FCFA
 
 // Par adresse IP : un particulier remplit le formulaire une ou deux fois.
 const IP_LIMIT = 5;
@@ -19,8 +17,6 @@ const IP_WINDOW_MS = 10 * 60_000;
 // même en changeant d'adresse IP.
 const ACCOUNT_LIMIT = 60;
 const ACCOUNT_WINDOW_MS = 60 * 60_000;
-
-const prix = z.number().int().min(0).max(MAX_PRIX).nullish();
 
 const DemandSchema = z
   .object({
@@ -32,36 +28,15 @@ const DemandSchema = z
       .string()
       .transform((v) => v.replace(/[\s.\-()+]/g, ""))
       .pipe(z.string().regex(/^\d{8,15}$/)),
-    filter_type_offre: z.array(z.enum(TYPE_OFFRE)).max(TYPE_OFFRE.length).default([]),
-    filter_type_bien: z.array(z.enum(TYPE_BIEN)).max(TYPE_BIEN.length).default([]),
-    filter_prix_min: prix,
-    filter_prix_max: prix,
-    filter_nb_chambres_min: z.number().int().min(0).max(20).nullish(),
-    filter_quartiers: z.array(z.string().trim().min(1).max(60)).max(12).default([]),
-    // Secteur choisi sur la carte : un point au Gabon et un rayon de 1 à 5 km.
-    geo_lat: z.number().min(-4.1).max(2.5).nullish(),
-    geo_lon: z.number().min(8.5).max(14.7).nullish(),
-    geo_radius_km: z.number().min(1).max(5).nullish(),
-    filter_ville: z.string().trim().min(1).max(60).nullish(),
-    exigences: z.string().trim().max(500).nullish(),
+    ...criteriaShape,
   })
-  .refine(
-    (d) => !d.filter_prix_min || !d.filter_prix_max || d.filter_prix_min <= d.filter_prix_max,
-    { path: ["filter_prix_max"], message: "budget" }
-  );
+  .refine(budgetIsCoherent, BUDGET_ISSUE);
 
 const FIELD_MESSAGES: Record<string, string> = {
   userId: "Lien invalide",
   client_name: "Nom invalide (2 à 80 caractères)",
   client_phone: "Numéro WhatsApp invalide. Format : +24177123456",
-  filter_prix_min: "Budget invalide",
-  filter_prix_max: "Budget invalide : le minimum dépasse le maximum",
-  filter_nb_chambres_min: "Nombre de chambres invalide",
-  filter_quartiers: "Secteur trop étendu",
-  geo_lat: "Secteur invalide",
-  geo_lon: "Secteur invalide",
-  geo_radius_km: "Distance invalide (1 à 5 km)",
-  exigences: "Exigences trop longues (500 caractères maximum)",
+  ...CRITERIA_FIELD_MESSAGES,
 };
 
 function tooManyRequests(retryAfterSeconds: number) {
@@ -118,13 +93,16 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString();
+  const { filters, zone } = criteriaToRow(input);
 
-  const hasZone = typeof input.geo_lat === "number" && typeof input.geo_lon === "number";
-  const zone = {
-    geo_lat: hasZone ? input.geo_lat : null,
-    geo_lon: hasZone ? input.geo_lon : null,
-    geo_radius_km: hasZone ? (input.geo_radius_km ?? 1) : null,
-  };
+  // Première inscription de ce numéro ? L'essai gratuit de 24 h démarre alors (valeur par
+  // défaut de la colonne trial_ends_at) ; une réinscription ne le relance pas.
+  const { data: existing } = await supabase
+    .from("client_demands")
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("client_phone", input.client_phone)
+    .maybeSingle();
 
   // Upsert client demand
   const base = {
@@ -132,25 +110,25 @@ export async function POST(request: Request) {
     client_phone: input.client_phone,
     client_name: input.client_name,
     is_active: true,
-    filter_type_offre: input.filter_type_offre,
-    filter_type_bien: input.filter_type_bien,
-    filter_prix_min: input.filter_prix_min || null,
-    filter_prix_max: input.filter_prix_max || null,
-    filter_nb_chambres_min: input.filter_nb_chambres_min || null,
-    filter_quartiers: input.filter_quartiers,
-    // Avec un secteur choisi sur la carte, la ville ne doit pas bloquer : Angondjé relève
-    // d'Akanda, pas de Libreville. Le secteur fait foi.
-    filter_ville: hasZone ? null : input.filter_ville || "Libreville",
-    exigences: input.exigences || null,
+    ...filters,
     source: "form",
     last_message_at: now,
   };
   const save = (row: Record<string, unknown>) =>
     supabase.from("client_demands").upsert(row, { onConflict: "user_id,client_phone" }).select("id").single();
 
-  let { data, error } = await save({ ...base, ...zone });
-  // Base sans les colonnes de secteur (migration non exécutée) : on enregistre sans elles.
-  if (error) ({ data, error } = await save(base));
+  // WHY: le lien de l'espace personnel n'est remis à l'écran qu'à la toute première
+  // inscription. Pour un numéro déjà inscrit, le lien ne part que sur son WhatsApp : sinon
+  // n'importe qui ouvrirait l'espace d'un client en ressaisissant son numéro.
+  const token = existing ? null : generateAccessToken();
+
+  let { data, error } = await save({ ...base, ...zone, ...(token ? { access_token: token } : {}) });
+  let linkToken = token;
+  // Base sans les colonnes de secteur ou de lien (migration non exécutée) : on enregistre sans elles.
+  if (error) {
+    ({ data, error } = await save(base));
+    linkToken = null;
+  }
 
   if (error || !data) {
     // Le détail reste dans les logs serveur : le message Postgres ne sort pas vers le public.
@@ -174,5 +152,11 @@ export async function POST(request: Request) {
   );
   if (convError) console.error("Chatbot conversation upsert failed:", convError.message);
 
-  return NextResponse.json({ success: true, id: data.id });
+  return NextResponse.json({
+    success: true,
+    id: data.id,
+    isNew: !existing,
+    // Chemin relatif : le navigateur du client reste sur le domaine où il a rempli le formulaire.
+    spacePath: linkToken ? `/c/${linkToken}` : null,
+  });
 }

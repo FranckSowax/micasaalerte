@@ -12,6 +12,14 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { ClientDemand } from "@/types/database";
+import { subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
+
+interface PendingPayment {
+  id: string;
+  demand_id: string;
+  reference: string | null;
+  created_at: string;
+}
 
 const TYPE_OFFRE_OPTIONS = ["location", "vente", "colocation"];
 const TYPE_BIEN_OPTIONS = ["appartement", "maison", "studio", "villa", "chambre", "terrain"];
@@ -25,6 +33,8 @@ export default function ClientsPage() {
   const [success, setSuccess] = useState("");
   const [userId, setUserId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [payments, setPayments] = useState<PendingPayment[]>([]);
+  const [acting, setActing] = useState<string | null>(null);
   const [form, setForm] = useState({
     client_name: "",
     client_phone: "",
@@ -45,7 +55,29 @@ export default function ClientsPage() {
       .select("*")
       .order("created_at", { ascending: false });
     setDemands((data || []) as unknown as ClientDemand[]);
+    // Table absente tant que la migration SQL n'est pas exécutée : la liste reste vide.
+    const { data: pending } = await supabase
+      .from("subscription_payments")
+      .select("id, demand_id, reference, created_at")
+      .eq("status", "pending");
+    setPayments((pending || []) as unknown as PendingPayment[]);
     setLoading(false);
+  };
+
+  const handleSubscription = async (id: string, action: "activate" | "reject") => {
+    if (action === "activate" && !confirm(`Confirmer le paiement de ${SUBSCRIPTION_PRICE_FCFA.toLocaleString("fr-FR")} FCFA et activer ${SUBSCRIPTION_DAYS} jours ?`)) return;
+    setError(""); setSuccess(""); setActing(id);
+    const res = await fetch(`/api/demands/${id}/subscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setError(data.error || "Action impossible");
+    else if (action === "activate") setSuccess(data.notified ? "Abonnement activé, client prévenu sur WhatsApp." : "Abonnement activé. Le message WhatsApp n'a pas pu être envoyé.");
+    else setSuccess("Déclaration de paiement écartée.");
+    setActing(null);
+    fetchDemands();
   };
 
   useEffect(() => {
@@ -208,8 +240,11 @@ export default function ClientsPage() {
         </CardContent></Card>
       ) : (
         <div className="space-y-3">
-          {demands.map((d) => (
-            <Card key={d.id}>
+          {demands.map((d) => {
+            const sub = subscriptionState(d);
+            const payment = payments.find((p) => p.demand_id === d.id);
+            return (
+            <Card key={d.id} className={payment ? "border-amber-500/60" : ""}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -217,7 +252,16 @@ export default function ClientsPage() {
                       <p className="font-medium">{d.client_name || "Sans nom"}</p>
                       <Badge variant={d.is_active ? "default" : "secondary"}>{d.is_active ? "Actif" : "Inactif"}</Badge>
                       <Badge className={sourceLabels[d.source]?.color || ""}>{sourceLabels[d.source]?.label || d.source}</Badge>
+                      <Badge className={sub.status === "expired" ? "bg-red-500/20 text-red-400" : sub.status === "trial" ? "bg-amber-500/20 text-amber-400" : "bg-green-500/20 text-green-400"}>
+                        {sub.status === "trial" ? "Essai" : sub.status === "active" ? "Abonné" : "Expiré"}
+                        {sub.endsAt ? ` · ${sub.status === "expired" ? "depuis le" : "jusqu'au"} ${formatDate(sub.endsAt)}` : ""}
+                      </Badge>
                     </div>
+                    {payment && (
+                      <p className="text-sm text-amber-400 mb-1">
+                        Paiement déclaré le {formatDate(payment.created_at)} — référence : <span className="font-mono">{payment.reference || "non fournie"}</span>
+                      </p>
+                    )}
                     <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                       <Phone className="h-3.5 w-3.5" />
                       <span>{d.client_phone}</span>
@@ -233,7 +277,16 @@ export default function ClientsPage() {
                       {d.exigences && <Badge variant="outline" className="text-xs">{d.exigences}</Badge>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={acting === d.id} onClick={() => handleSubscription(d.id, "activate")}>
+                      {acting === d.id ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                      {payment ? "Valider le paiement" : `Activer ${SUBSCRIPTION_DAYS} jours`}
+                    </Button>
+                    {payment && (
+                      <Button variant="outline" size="sm" disabled={acting === d.id} onClick={() => handleSubscription(d.id, "reject")}>
+                        Refuser
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => handleToggle(d.id, d.is_active)}>
                       {d.is_active ? "Désactiver" : "Activer"}
                     </Button>
@@ -244,7 +297,8 @@ export default function ClientsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
