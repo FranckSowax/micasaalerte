@@ -129,3 +129,56 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
     return "ai_error";
   }
 }
+
+const REPROCESS_WINDOW_DAYS = 7;
+
+/**
+ * Ré-analyse les publications mémorisées restées « en attente » ou « en erreur »,
+ * même si elles ont quitté le flux. Sert à rattraper une panne de l'IA, ou à
+ * reclasser des publications après correction du prompt (remises en attente par SQL).
+ *
+ * @returns nombre de publications par résultat
+ * @example const counts = await reprocessPending(client, 40);
+ */
+export async function reprocessPending(
+  client: ServiceClient,
+  limit: number,
+  onAiError?: (message: string) => void
+): Promise<Partial<Record<IngestStatus, number>>> {
+  const counts: Partial<Record<IngestStatus, number>> = {};
+  if (limit <= 0) return counts;
+
+  const since = new Date(Date.now() - REPROCESS_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data: rows } = await client
+    .from("raw_posts")
+    .select("user_id, fb_group_id, agent_profile_id, source_type, fb_post_id, fb_post_url, fb_author_name, fb_author_id, raw_text, raw_images, fb_posted_at")
+    .in("ai_status", ["pending", "error"])
+    .in("source_type", ["group", "profile"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  for (const row of rows || []) {
+    const sourceType = row.source_type === "profile" ? "profile" : "group";
+    const sourceRowId = (sourceType === "group" ? row.fb_group_id : row.agent_profile_id) as string | null;
+    const text = typeof row.raw_text === "string" ? row.raw_text.trim() : "";
+    if (!sourceRowId || !text) continue;
+
+    const status = await ingestPost(client, {
+      userId: row.user_id as string,
+      sourceType,
+      sourceRowId,
+      authorId: (row.fb_author_id as string | null) ?? null,
+      postId: row.fb_post_id as string,
+      url: (row.fb_post_url as string | null) ?? null,
+      author: (row.fb_author_name as string | null) ?? null,
+      text,
+      images: Array.isArray(row.raw_images) ? (row.raw_images as string[]) : [],
+      publishedAt: (row.fb_posted_at as string | null) ?? null,
+      onAiError,
+    });
+    counts[status] = (counts[status] || 0) + 1;
+  }
+
+  return counts;
+}

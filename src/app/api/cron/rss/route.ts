@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { isAIConfigured } from "@/lib/ai";
 import { isAuthorizedCron } from "@/lib/cron-auth";
-import { ingestPost } from "@/lib/ingest";
+import { ingestPost, reprocessPending } from "@/lib/ingest";
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
@@ -159,6 +159,13 @@ async function handleCron(request: Request) {
     feeds.push({ items: posts.length, spanMinutes, possibleGap: oldestWasNew === true });
   }
 
+  // Rattrapage : publications mémorisées restées en attente ou en erreur, même sorties du flux.
+  const recordAiError = (message: string) => {
+    const key = message.slice(0, 220);
+    aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
+  };
+  const reprocessed = await reprocessPending(client, MAX_ANALYSES_PER_RUN - analyses, recordAiError);
+
   if (touchedGroups.size) {
     await client
       .from("facebook_groups")
@@ -172,5 +179,5 @@ async function handleCron(request: Request) {
       .in("id", Array.from(touchedAgents));
   }
 
-  return NextResponse.json({ success: true, ...stats, feeds, unknownSources, aiErrorMessages });
+  return NextResponse.json({ success: true, ...stats, reprocessed, feeds, unknownSources, aiErrorMessages });
 }
