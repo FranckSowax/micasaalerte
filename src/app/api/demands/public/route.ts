@@ -37,7 +37,11 @@ const DemandSchema = z
     filter_prix_min: prix,
     filter_prix_max: prix,
     filter_nb_chambres_min: z.number().int().min(0).max(20).nullish(),
-    filter_quartiers: z.array(z.string().trim().min(1).max(60)).max(3).default([]),
+    filter_quartiers: z.array(z.string().trim().min(1).max(60)).max(12).default([]),
+    // Secteur choisi sur la carte : un point au Gabon et un rayon de 1 à 5 km.
+    geo_lat: z.number().min(-4.1).max(2.5).nullish(),
+    geo_lon: z.number().min(8.5).max(14.7).nullish(),
+    geo_radius_km: z.number().min(1).max(5).nullish(),
     filter_ville: z.string().trim().min(1).max(60).nullish(),
     exigences: z.string().trim().max(500).nullish(),
   })
@@ -53,7 +57,10 @@ const FIELD_MESSAGES: Record<string, string> = {
   filter_prix_min: "Budget invalide",
   filter_prix_max: "Budget invalide : le minimum dépasse le maximum",
   filter_nb_chambres_min: "Nombre de chambres invalide",
-  filter_quartiers: "3 quartiers maximum",
+  filter_quartiers: "Secteur trop étendu",
+  geo_lat: "Secteur invalide",
+  geo_lon: "Secteur invalide",
+  geo_radius_km: "Distance invalide (1 à 5 km)",
   exigences: "Exigences trop longues (500 caractères maximum)",
 };
 
@@ -112,30 +119,38 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
+  const hasZone = typeof input.geo_lat === "number" && typeof input.geo_lon === "number";
+  const zone = {
+    geo_lat: hasZone ? input.geo_lat : null,
+    geo_lon: hasZone ? input.geo_lon : null,
+    geo_radius_km: hasZone ? (input.geo_radius_km ?? 1) : null,
+  };
+
   // Upsert client demand
-  const { data, error } = await supabase
-    .from("client_demands")
-    .upsert(
-      {
-        user_id: input.userId,
-        client_phone: input.client_phone,
-        client_name: input.client_name,
-        is_active: true,
-        filter_type_offre: input.filter_type_offre,
-        filter_type_bien: input.filter_type_bien,
-        filter_prix_min: input.filter_prix_min || null,
-        filter_prix_max: input.filter_prix_max || null,
-        filter_nb_chambres_min: input.filter_nb_chambres_min || null,
-        filter_quartiers: input.filter_quartiers,
-        filter_ville: input.filter_ville || "Libreville",
-        exigences: input.exigences || null,
-        source: "form",
-        last_message_at: now,
-      },
-      { onConflict: "user_id,client_phone" }
-    )
-    .select("id")
-    .single();
+  const base = {
+    user_id: input.userId,
+    client_phone: input.client_phone,
+    client_name: input.client_name,
+    is_active: true,
+    filter_type_offre: input.filter_type_offre,
+    filter_type_bien: input.filter_type_bien,
+    filter_prix_min: input.filter_prix_min || null,
+    filter_prix_max: input.filter_prix_max || null,
+    filter_nb_chambres_min: input.filter_nb_chambres_min || null,
+    filter_quartiers: input.filter_quartiers,
+    // Avec un secteur choisi sur la carte, la ville ne doit pas bloquer : Angondjé relève
+    // d'Akanda, pas de Libreville. Le secteur fait foi.
+    filter_ville: hasZone ? null : input.filter_ville || "Libreville",
+    exigences: input.exigences || null,
+    source: "form",
+    last_message_at: now,
+  };
+  const save = (row: Record<string, unknown>) =>
+    supabase.from("client_demands").upsert(row, { onConflict: "user_id,client_phone" }).select("id").single();
+
+  let { data, error } = await save({ ...base, ...zone });
+  // Base sans les colonnes de secteur (migration non exécutée) : on enregistre sans elles.
+  if (error) ({ data, error } = await save(base));
 
   if (error || !data) {
     // Le détail reste dans les logs serveur : le message Postgres ne sort pas vers le public.

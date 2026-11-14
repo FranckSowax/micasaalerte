@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distanceKm, gazetteerSize, locateAnnonce, locatePlace } from "./geo";
+import { distanceKm, gazetteerSize, listPlaces, locateAnnonce, locatePlace, placesWithin } from "./geo";
 
 describe("référentiel", () => {
   it("contient les quartiers de Libreville et les villes du Gabon", () => {
@@ -78,5 +78,30 @@ describe("locateAnnonce", () => {
 
   it("renvoie null quand rien n'est reconnu", () => {
     expect(locateAnnonce({ quartier: null, ville: null })).toBeNull();
+  });
+});
+
+describe("placesWithin et listPlaces", () => {
+  it("propose les quartiers d'une zone, du plus proche au plus éloigné", () => {
+    const angondje = locatePlace("Angondjé")!;
+    const at1 = placesWithin(angondje, 1).map((p) => p.name);
+    const at5 = placesWithin(angondje, 5).map((p) => p.name);
+    expect(at1[0]).toBe("Angondjé");
+    expect(at5).toEqual(expect.arrayContaining(["Angondjé", "Première Cité", "Okala"]));
+    expect(at5.length).toBeGreaterThan(at1.length);
+    expect(at5).not.toContain("Nzeng Ayong");
+    const km = placesWithin(angondje, 5).map((p) => p.km);
+    expect([...km].sort((a, b) => a - b)).toEqual(km);
+  });
+
+  it("ne propose rien loin de tout quartier connu", () => {
+    expect(placesWithin({ lat: -2.5, lon: 11.5 }, 5)).toEqual([]);
+  });
+
+  it("liste les quartiers et localités par ordre alphabétique, sans les villes", () => {
+    const names = listPlaces().map((p) => p.name);
+    expect(names).toContain("Angondjé");
+    expect(names).not.toContain("Port-Gentil");
+    expect(names.length).toBeGreaterThan(100);
   });
 });

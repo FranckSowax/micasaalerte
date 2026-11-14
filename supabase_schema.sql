@@ -584,3 +584,28 @@ ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_lat NUMERIC;
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_lon NUMERIC;
 -- Rayon de recherche, en kilomètres
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_radius_km NUMERIC DEFAULT 5;
+
+-- ============================================================
+-- ESPACE CLIENT PAR LIEN PERSONNEL (rejouable)
+-- ============================================================
+-- Jeton du lien personnel, et empreinte de l'appareil qui l'a ouvert en premier
+-- (le lien est refusé sur un autre appareil).
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS access_token TEXT;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS device_hash TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_client_demands_access_token ON client_demands(access_token);
+
+-- Tri fait par le client sur chaque annonce reçue : à trier, retenue, supprimée
+ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS client_status TEXT DEFAULT 'new';
+ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+DO $$
+BEGIN
+    ALTER TABLE client_demand_sends
+        ADD CONSTRAINT client_demand_sends_client_status_check CHECK (client_status IN ('new', 'kept', 'removed'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Plafond quotidien : les alertes sont désormais un lien vers l'espace client (un message
+-- par heure au plus), le plafond compte donc les annonces ajoutées, plus les messages.
+-- L'ancienne valeur par défaut (5) est relevée à 30 ; aucun écran ne permettait de la régler.
+ALTER TABLE client_demands ALTER COLUMN max_alerts_per_day SET DEFAULT 30;
+UPDATE client_demands SET max_alerts_per_day = 30 WHERE max_alerts_per_day = 5;

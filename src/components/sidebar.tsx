@@ -20,6 +20,7 @@ import {
   Users2,
   UserCheck,
   Video,
+  Map as MapIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/annonces", label: "Annonces", icon: Building2 },
+  { href: "/carte", label: "Carte", icon: MapIcon },
   { href: "/groupes", label: "Groupes FB", icon: Users },
   { href: "/agents", label: "Agents immo", icon: UserCircle },
   { href: "/contributeurs", label: "Contributeurs", icon: UserCheck },

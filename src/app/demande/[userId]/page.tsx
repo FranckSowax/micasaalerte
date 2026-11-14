@@ -1,20 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Home, Loader2, CheckCircle2, MapPin, X } from "lucide-react";
+import { Map } from "@/components/map";
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, listPlaces, locatePlace, placesWithin } from "@/lib/geo";
 
 const TYPE_OFFRE = ["location", "vente", "colocation"];
 const TYPE_BIEN = ["appartement", "maison", "studio", "villa", "chambre", "terrain"];
-const MAX_QUARTIERS = 3;
+const MAX_ZONE_QUARTIERS = 12;
+const MIN_RADIUS_KM = 1;
+const MAX_RADIUS_KM = 5;
+// Quartiers et localités proposés à la saisie.
+const PLACES = listPlaces();
+
+interface Zone {
+  lat: number;
+  lon: number;
+  label: string;
+}
 
 export default function DemandePage({ params }: { params: { userId: string } }) {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [quartiersOptions, setQuartiersOptions] = useState<{ name: string; count: number }[]>([]);
+  const [zone, setZone] = useState<Zone | null>(null);
+  const [zoneQuery, setZoneQuery] = useState("");
+  const [radius, setRadius] = useState(MIN_RADIUS_KM);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
     client_name: "",
@@ -24,26 +38,28 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
     prix_min: "",
     prix_max: "",
     nb_chambres_min: "",
-    quartiers: [] as string[],
     ville: "Libreville",
     exigences: "",
   });
 
-  useEffect(() => {
-    fetch(`/api/quartiers?userId=${params.userId}`)
-      .then(r => r.json())
-      .then(data => setQuartiersOptions(data))
-      .catch(() => {});
-  }, [params.userId]);
+  // Quartiers dont le centre tombe dans la zone choisie, du plus proche au plus éloigné.
+  const nearby = useMemo(() => (zone ? placesWithin(zone, radius) : []), [zone, radius]);
 
-  const toggleArray = (key: "type_offre" | "type_bien" | "quartiers", value: string) => {
+  const pickQuartier = (value: string) => {
+    setZoneQuery(value);
+    const place = locatePlace(value, ["quartier", "localite"]);
+    // On ne retient le lieu que si le nom saisi est complet, pas à chaque frappe.
+    if (place && PLACES.some((pl) => pl.name.toLowerCase() === value.trim().toLowerCase())) {
+      setZone({ lat: place.lat, lon: place.lon, label: place.lieu });
+    }
+  };
+
+  const toggleArray = (key: "type_offre" | "type_bien", value: string) => {
     setForm(prev => {
       const current = prev[key];
       if (current.includes(value)) {
         return { ...prev, [key]: current.filter(v => v !== value) };
       }
-      // Max 3 quartiers
-      if (key === "quartiers" && current.length >= MAX_QUARTIERS) return prev;
       return { ...prev, [key]: [...current, value] };
     });
   };
@@ -70,7 +86,10 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
         filter_prix_min: form.prix_min ? Number(form.prix_min) : null,
         filter_prix_max: form.prix_max ? Number(form.prix_max) : null,
         filter_nb_chambres_min: form.nb_chambres_min ? Number(form.nb_chambres_min) : null,
-        filter_quartiers: form.quartiers,
+        filter_quartiers: nearby.slice(0, MAX_ZONE_QUARTIERS).map((q) => q.name),
+        geo_lat: zone ? zone.lat : null,
+        geo_lon: zone ? zone.lon : null,
+        geo_radius_km: zone ? radius : null,
         filter_ville: form.ville,
         exigences: form.exigences || null,
       }),
@@ -192,51 +211,88 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
             </CardContent>
           </Card>
 
-          {/* Quartiers */}
+          {/* Secteur recherché */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Quartiers</CardTitle>
+                <CardTitle className="text-lg">Secteur recherché</CardTitle>
               </div>
               <CardDescription>
-                Sélectionnez jusqu&apos;à {MAX_QUARTIERS} quartiers ({form.quartiers.length}/{MAX_QUARTIERS})
-                {form.quartiers.length === 0 && " - ou laissez vide pour tous"}
+                Choisissez un quartier ou touchez la carte, puis réglez la distance. Laissez vide pour chercher partout.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {quartiersOptions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {quartiersOptions.map(q => {
-                    const selected = form.quartiers.includes(q.name);
-                    const disabled = !selected && form.quartiers.length >= MAX_QUARTIERS;
-                    return (
-                      <Badge
-                        key={q.name}
-                        variant={selected ? "default" : "outline"}
-                        className={`text-sm py-1.5 px-3 ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-                        onClick={() => !disabled && toggleArray("quartiers", q.name)}
-                      >
-                        {q.name}
-                        <span className="ml-1 text-[10px] opacity-60">({q.count})</span>
-                      </Badge>
-                    );
-                  })}
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium" htmlFor="zone-quartier">Quartier</label>
+                <Input
+                  id="zone-quartier"
+                  list="quartiers-connus"
+                  placeholder="Ex. Angondjé, Nzeng Ayong, Okala…"
+                  value={zoneQuery}
+                  onChange={(e) => pickQuartier(e.target.value)}
+                />
+                <datalist id="quartiers-connus">
+                  {PLACES.map((pl) => <option key={pl.name} value={pl.name} />)}
+                </datalist>
+              </div>
+
+              <Map
+                center={zone ? [zone.lat, zone.lon] : DEFAULT_MAP_CENTER}
+                zoom={zone ? 13 : DEFAULT_MAP_ZOOM}
+                circles={zone ? [{ id: "zone", lat: zone.lat, lon: zone.lon, radiusKm: radius }] : []}
+                markers={zone ? [{ id: "centre", lat: zone.lat, lon: zone.lon, title: zone.label }] : []}
+                onPick={(lat, lon) => {
+                  setZone({ lat, lon, label: "Point choisi sur la carte" });
+                  setZoneQuery("");
+                }}
+                fitContent={!!zone}
+                className="h-72 w-full rounded-lg overflow-hidden"
+              />
+
+              <div>
+                <label className="text-sm font-medium flex justify-between" htmlFor="zone-rayon">
+                  <span>Distance autour de ce point</span>
+                  <span className="text-primary">{radius} km</span>
+                </label>
+                <input
+                  id="zone-rayon"
+                  type="range"
+                  min={MIN_RADIUS_KM}
+                  max={MAX_RADIUS_KM}
+                  step={1}
+                  value={radius}
+                  onChange={(e) => setRadius(Number(e.target.value))}
+                  className="w-full accent-primary"
+                  disabled={!zone}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{MIN_RADIUS_KM} km</span>
+                  <span>{MAX_RADIUS_KM} km</span>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Chargement des quartiers...</p>
-              )}
-              {form.quartiers.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border">
-                  <p className="text-xs text-muted-foreground mb-1">Sélectionnés :</p>
-                  <div className="flex gap-2">
-                    {form.quartiers.map(q => (
-                      <Badge key={q} className="cursor-pointer" onClick={() => toggleArray("quartiers", q)}>
-                        {q} <X className="h-3 w-3 ml-1" />
+              </div>
+
+              {zone ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {nearby.length
+                      ? `Quartiers compris dans cette zone (${nearby.length}) :`
+                      : "Aucun quartier connu dans cette zone : élargissez la distance."}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {nearby.map((q) => (
+                      <Badge key={q.name} variant="outline" className="text-sm py-1 px-2">
+                        {q.name}
+                        <span className="ml-1 text-[10px] opacity-60">{q.km < 0.1 ? "centre" : `${q.km.toFixed(1)} km`}</span>
                       </Badge>
                     ))}
                   </div>
+                  <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => { setZone(null); setZoneQuery(""); }}>
+                    <X className="h-4 w-4 mr-1" /> Chercher partout
+                  </Button>
                 </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Aucun secteur choisi : vous recevrez les annonces de tous les quartiers.</p>
               )}
             </CardContent>
           </Card>

@@ -67,6 +67,12 @@ export default function AnnoncesPage() {
   });
   const supabase = createClient();
 
+  // Arrivée depuis la carte : /annonces?quartier=Angondjé
+  useEffect(() => {
+    const quartier = new URLSearchParams(window.location.search).get("quartier");
+    if (quartier) setFilters((f) => ({ ...f, quartier }));
+  }, []);
+
   const fetchAnnonces = useCallback(async () => {
     setLoading(true);
     let query = supabase

@@ -9,7 +9,8 @@ import { DEFAULT_RADIUS_KM, distanceKm, locateAnnonce, locatePlace, type GeoPoin
 // Une annonce incomplète n'est pas rejetée : un champ inconnu n'est jamais une contradiction.
 
 export const DEFAULT_MIN_SCORE = 50;
-export const DEFAULT_MAX_ALERTS_PER_DAY = 5;
+/** Annonces ajoutées par jour à l'espace d'un abonné (les alertes sont un lien, pas une rafale de messages). */
+export const DEFAULT_MAX_ALERTS_PER_DAY = 30;
 export const DEFAULT_QUIET_START = 21;
 export const DEFAULT_QUIET_END = 7;
 export const ALERT_TIMEZONE = "Africa/Libreville";

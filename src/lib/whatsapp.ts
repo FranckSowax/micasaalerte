@@ -29,6 +29,26 @@ export function formatDigestMessage(annonces: Annonce[]): string {
   return lines.join("\n");
 }
 
+/**
+ * Message d'alerte : un lien vers l'espace personnel du client, pas le détail des annonces.
+ * WHY: un seul message court par heure au lieu d'une rafale d'annonces — moins intrusif pour
+ * le client, et moins risqué pour un numéro relié à WAHA.
+ *
+ * @example formatClientLinkMessage({ name: "Awa", count: 3, link })
+ */
+export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean }): string {
+  const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
+  const lines = ["*Mi Casa Alerte*", "", hello];
+  if (params.renewed) {
+    lines.push("Voici votre nouveau lien personnel. L'ancien ne fonctionne plus.");
+  } else {
+    const n = params.count || 0;
+    lines.push(n > 1 ? `${n} nouvelles annonces correspondent à votre recherche.` : "Une nouvelle annonce correspond à votre recherche.");
+  }
+  lines.push("", "Consultez-les, contactez l'annonceur et triez-les ici :", params.link, "", "Ce lien est personnel : il ne fonctionne que sur votre appareil.");
+  return lines.join("\n");
+}
+
 export function formatAnnonceMessage(annonce: Annonce): string {
   const lines: string[] = [];
 

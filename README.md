@@ -111,9 +111,20 @@ publication.
   budget, type, chambres), puis score 0-100 sur les preferences (quartiers, meuble, climatisation,
   parking, surface, mots-cles). Envoi si le score atteint le seuil de l'abonne (50 par defaut) ;
   doute sur le prix, la ville ou la transaction = annonce retenue pour verification.
-- **Alertes** : plafond par jour (5), plage silencieuse (21h-7h, heure de Libreville), mode immediat ou
+- **Alertes** : plafond par jour (30), plage silencieuse (21h-7h, heure de Libreville), mode immediat ou
   resume quotidien, jamais deux fois la meme annonce au meme abonne.
-- Non couvert pour l'instant : OCR des photos, transcription audio des videos, distance geographique.
+- Non couvert pour l'instant : OCR des photos, transcription audio des videos.
+
+- **Carte** (`/carte`, administration) : annonces localisees regroupees par lieu et secteurs des demandes
+  clients, sur fond OpenStreetMap (Leaflet).
+- **Demande client** (`/demande/[userId]`) : le client choisit un quartier ou touche la carte, puis regle
+  un rayon de 1 a 5 km (1 km par defaut) ; les quartiers compris dans le rayon sont affiches.
+- **Espace client** (`/c/[jeton]`) : `/api/cron/demands` envoie par WhatsApp un seul message par client et
+  par passage, avec son lien personnel. La page liste les annonces deja filtrees selon ses criteres, avec
+  les boutons WhatsApp, Appeler, Voir sur Facebook/TikTok, puis Conserver (vert) et Supprimer (rouge).
+  Le lien est lie au premier appareil qui l'ouvre (cookie) : ouvert ailleurs, il est refuse, et le client
+  peut demander un nouveau lien, envoye uniquement sur son numero WhatsApp (l'ancien est alors invalide).
+  Cette route n'est appelee par aucun cron tant qu'on ne l'a pas planifiee (ex. toutes les heures).
 
 - **Perimetre** : seules les offres situees au Gabon deviennent des annonces. Les recherches de biens
   (« je cherche un studio ») et les biens a l'etranger sont ecartes.

@@ -1,10 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import {
-  formatAnnonceMessage,
-  formatDigestMessage,
-  sendWhatsAppMessage,
-  isWahaConfigured,
-} from "@/lib/whatsapp";
+import { clientLink, generateAccessToken } from "@/lib/client-access";
+import { formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
 import {
   DEFAULT_MAX_ALERTS_PER_DAY,
   DEFAULT_QUIET_END,
@@ -19,13 +15,18 @@ import { sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import type { Annonce, ClientDemand } from "@/types/database";
 
-// Appelée en POST par le service cron Railway ; GET accepté aussi pour un déclenchement manuel.
+// Alertes aux abonnés, à lancer toutes les heures.
+// Pour chaque abonné : on cherche les annonces récentes qui correspondent à ses critères
+// et qu'il n'a pas encore reçues, on les ajoute à son espace personnel, puis on lui envoie
+// UN message WhatsApp contenant son lien. Pas de message s'il n'y a rien de nouveau.
+// Appelée en POST par un service cron ; GET accepté aussi pour un déclenchement manuel.
 export const dynamic = "force-dynamic";
 export const GET = handleCron;
 export const POST = handleCron;
 
-const RECENT_ANNONCES = 100;
-const DIGEST_MAX_ITEMS = 5;
+const RECENT_ANNONCES = 200;
+/** Annonces ajoutées à l'espace d'un abonné par passage, les mieux notées d'abord. */
+const MAX_PER_RUN = 10;
 
 function versionOf(annonce: Annonce): number {
   const details = (annonce as unknown as { details?: { version?: unknown } }).details;
@@ -57,11 +58,11 @@ async function handleCron(request: Request) {
     byUser.set(demand.user_id, [...(byUser.get(demand.user_id) || []), demand]);
   }
 
-  const stats = { totalSent: 0, digests: 0, heldForReview: 0, skippedQuiet: 0, capped: 0, failed: 0 };
+  const stats = { clients: demands.length, messagesSent: 0, annoncesAdded: 0, heldForReview: 0, skippedQuiet: 0, capped: 0, failed: 0, migrationNeeded: false };
 
   for (const [userId, userDemands] of Array.from(byUser.entries())) {
-    // Préfiltrage SQL : annonces immobilières récentes du compte. Les critères de
-    // l'abonné sont ensuite appliqués par matchDemand (bloquants, puis score).
+    // Préfiltrage SQL : annonces immobilières récentes et non archivées du compte. Les critères
+    // de l'abonné sont ensuite appliqués par matchDemand (bloquants, distance, score).
     const { data: rows } = await supabase
       .from("annonces")
       .select("*")
@@ -80,18 +81,17 @@ async function handleCron(request: Request) {
         continue;
       }
 
-      const { data: sends } = await supabase
-        .from("client_demand_sends")
-        .select("*")
-        .eq("demand_id", demand.id);
+      const { data: sends } = await supabase.from("client_demand_sends").select("*").eq("demand_id", demand.id);
 
-      // Clé d'unicité abonné + annonce : une annonce déjà tentée n'est jamais renvoyée.
       // Clé d'unicité abonné + annonce + version : une annonce dont le prix a changé (nouvelle
-      // version) peut être renvoyée une fois, jamais deux fois la même version.
+      // version) peut être signalée une fois de plus, jamais deux fois la même version.
       const alreadySent = new Set((sends || []).map((s) => `${s.annonce_id}:${s.annonce_version ?? 1}`));
-      const sentToday = (sends || []).filter(
+      const addedToday = (sends || []).filter(
         (s) => s.status !== "failed" && typeof s.sent_at === "string" && s.sent_at >= dayStart
       ).length;
+
+      // Résumé quotidien : un seul message par jour.
+      if (demand.alert_mode === "digest" && addedToday > 0) continue;
 
       const candidates: { annonce: Annonce; score: number }[] = [];
       for (const annonce of annonces) {
@@ -107,46 +107,48 @@ async function handleCron(request: Request) {
       if (!candidates.length) continue;
       candidates.sort((a, b) => b.score - a.score);
 
-      const record = async (annonce: Annonce, messageId: string | undefined, success: boolean) => {
-        const row = {
-          demand_id: demand.id,
-          annonce_id: annonce.id,
-          message_id: messageId || null,
-          status: success ? "sent" : "failed",
-        };
-        const version = versionOf(annonce);
-        if (version === 1) return supabase.from("client_demand_sends").insert(row);
-        const { error } = await supabase.from("client_demand_sends").insert({ ...row, annonce_version: version });
-        // Base sans la colonne annonce_version : on enregistre quand même l'envoi.
-        if (error) await supabase.from("client_demand_sends").insert(row);
-      };
+      const remaining = Math.max(0, (demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY) - addedToday);
+      const picked = candidates.slice(0, Math.min(remaining, MAX_PER_RUN)).map((c) => c.annonce);
+      if (candidates.length > picked.length) stats.capped += candidates.length - picked.length;
+      if (!picked.length) continue;
 
-      if (demand.alert_mode === "digest") {
-        // Résumé périodique : un seul message par jour, regroupant les meilleures annonces.
-        if (sentToday > 0) continue;
-        const picked = candidates.slice(0, DIGEST_MAX_ITEMS).map((c) => c.annonce);
-        const result = await sendWhatsAppMessage(demand.client_phone, formatDigestMessage(picked));
-        for (const annonce of picked) await record(annonce, result.messageId, result.success);
-        if (result.success) {
-          stats.digests++;
-          stats.totalSent += picked.length;
-        } else {
-          stats.failed++;
+      // Lien personnel : créé à la première alerte, puis réutilisé.
+      let token = (demand as unknown as { access_token?: string | null }).access_token || null;
+      if (!token) {
+        token = generateAccessToken();
+        const { error } = await supabase.from("client_demands").update({ access_token: token }).eq("id", demand.id);
+        if (error) {
+          // Colonne access_token absente : la migration SQL n'a pas été exécutée.
+          stats.migrationNeeded = true;
+          continue;
         }
-        await sleep(500);
+      }
+
+      // WHY: on envoie d'abord, on enregistre ensuite. Si l'envoi échoue, rien n'est marqué
+      // comme reçu et les mêmes annonces seront proposées au passage suivant.
+      const result = await sendWhatsAppMessage(
+        demand.client_phone,
+        formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(token) })
+      );
+      if (!result.success) {
+        stats.failed++;
         continue;
       }
 
-      const remaining = Math.max(0, (demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY) - sentToday);
-      if (candidates.length > remaining) stats.capped += candidates.length - remaining;
-
-      for (const { annonce } of candidates.slice(0, remaining)) {
-        const result = await sendWhatsAppMessage(demand.client_phone, formatAnnonceMessage(annonce));
-        await record(annonce, result.messageId, result.success);
-        if (result.success) stats.totalSent++;
-        else stats.failed++;
-        await sleep(500); // Avoid WhatsApp rate limits
+      for (const annonce of picked) {
+        const row = { demand_id: demand.id, annonce_id: annonce.id, message_id: result.messageId || null, status: "sent" };
+        const version = versionOf(annonce);
+        if (version === 1) {
+          await supabase.from("client_demand_sends").insert(row);
+        } else {
+          const { error } = await supabase.from("client_demand_sends").insert({ ...row, annonce_version: version });
+          // Base sans la colonne annonce_version : on enregistre quand même.
+          if (error) await supabase.from("client_demand_sends").insert(row);
+        }
       }
+      stats.messagesSent++;
+      stats.annoncesAdded += picked.length;
+      await sleep(1000); // Espace les messages : ménage le numéro WhatsApp
     }
   }
 

@@ -171,3 +171,28 @@ export function gazetteerSize(): Record<PlaceKind, number> {
   for (const { place } of INDEX) size[place.kind]++;
   return size;
 }
+
+/** Lieux du référentiel, par ordre alphabétique (pour proposer un choix à l'utilisateur). */
+export function listPlaces(kinds: PlaceKind[] = ["quartier", "localite"]): Place[] {
+  return INDEX.map((p) => p.place)
+    .filter((p) => kinds.includes(p.kind))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+
+/**
+ * Quartiers et localités dont le centre se trouve dans un rayon donné, du plus proche au plus éloigné.
+ * @example placesWithin({ lat: 0.5288, lon: 9.4144 }, 5).map((p) => p.name) // ["Angondjé", "Première Cité", "Okala", …]
+ */
+export function placesWithin(
+  center: { lat: number; lon: number },
+  radiusKm: number,
+  kinds: PlaceKind[] = ["quartier", "localite"]
+): (Place & { km: number })[] {
+  return INDEX.map((p) => ({ ...p.place, km: distanceKm(center, p.place) }))
+    .filter((p) => kinds.includes(p.kind) && p.km <= radiusKm)
+    .sort((a, b) => a.km - b.km);
+}
+
+/** Centre et cadrage par défaut des cartes : l'agglomération de Libreville. */
+export const DEFAULT_MAP_CENTER: [number, number] = [0.43, 9.45];
+export const DEFAULT_MAP_ZOOM = 12;
