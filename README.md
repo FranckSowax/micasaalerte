@@ -90,6 +90,16 @@ immo-tracker/
 - WhatsApp via WAHA (auto-heberge)
 - Railway (deploiement)
 
+## Collecte des groupes Facebook par flux RSS
+
+La route `/api/cron/rss` lit les flux rss.app declares dans `RSS_FEED_URLS` (format JSON) et
+enregistre les publications des groupes connus de l'application. Un flux ne contient que les
+50 dernieres publications, sans historique : il faut donc le lire souvent (toutes les 15 minutes).
+La reponse de la route signale `possibleGap` quand la plus ancienne publication du flux etait
+encore inconnue, signe que des publications ont pu etre manquees, et `unknownGroups` pour les
+groupes presents dans le flux mais absents de l'application. Le flux ne fournit qu'une image par
+publication.
+
 ## Extraction et matching
 
 - **Fiche normalisee** (`src/lib/extraction.ts`) : l'IA remplit un schema JSON ; tout champ important
