@@ -1,5 +1,9 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { formatAnnonceMessage, sendWhatsAppMessage } from "@/lib/whatsapp";
+import {
+  formatAnnonceMessage,
+  sendWhatsAppMessage,
+  isWahaConfigured,
+} from "@/lib/whatsapp";
 import { sleep } from "@/lib/rate-limit";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { NextResponse } from "next/server";
@@ -45,6 +49,10 @@ async function handleCron(request: Request) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
+  if (!isWahaConfigured()) {
+    return NextResponse.json({ error: "WAHA non configuré" }, { status: 503 });
+  }
+
   const supabase = createServiceClient();
 
   // Get all active demands grouped by user
@@ -68,17 +76,6 @@ async function handleCron(request: Request) {
   let totalSent = 0;
 
   for (const [userId, userDemands] of Array.from(byUser.entries())) {
-    // Get admin's WhatsApp credentials
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("whatsapp_phone_number_id, whatsapp_access_token")
-      .eq("id", userId)
-      .single();
-
-    const phoneNumberId = (profile as Record<string, unknown>)?.whatsapp_phone_number_id as string || process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = (profile as Record<string, unknown>)?.whatsapp_access_token as string || process.env.WHATSAPP_ACCESS_TOKEN;
-    if (!phoneNumberId || !accessToken) continue;
-
     // Get recent annonces
     const { data: annonces } = await supabase
       .from("annonces")
@@ -109,12 +106,7 @@ async function handleCron(request: Request) {
 
         // Send
         const message = formatAnnonceMessage(typedAnnonce);
-        const result = await sendWhatsAppMessage(
-          phoneNumberId,
-          accessToken,
-          typedDemand.client_phone,
-          message
-        );
+        const result = await sendWhatsAppMessage(typedDemand.client_phone, message);
 
         // Track send
         await supabase.from("client_demand_sends").insert({

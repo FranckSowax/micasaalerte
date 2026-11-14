@@ -150,7 +150,7 @@ export default function WhatsAppPage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Numéro WhatsApp</label>
-                  <Input placeholder="+24177123456" value={form.phone_number} onChange={(e) => setForm({ ...form, phone_number: e.target.value })} required />
+                  <Input placeholder="+24177123456 ou 1203…@g.us (groupe)" value={form.phone_number} onChange={(e) => setForm({ ...form, phone_number: e.target.value })} required />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Type</label>

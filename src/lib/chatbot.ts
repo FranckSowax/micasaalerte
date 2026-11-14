@@ -40,8 +40,7 @@ export async function handleIncomingMessage(
   userId: string,
   clientPhone: string,
   messageText: string,
-  phoneNumberId: string,
-  accessToken: string
+  replyTo: string
 ): Promise<void> {
   const supabase = createServiceClient();
 
@@ -70,7 +69,7 @@ export async function handleIncomingMessage(
 
     // Send welcome message
     const reply = ONBOARDING_MESSAGES.welcome;
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, reply);
+    await sendWhatsAppMessage(replyTo, reply);
 
     await supabase
       .from("chatbot_conversations")
@@ -91,7 +90,7 @@ export async function handleIncomingMessage(
 
   // Handle active state (AI-driven)
   if (state === "active") {
-    await handleActiveConversation(supabase, conv, userId, clientPhone, text, phoneNumberId, accessToken);
+    await handleActiveConversation(supabase, conv, userId, clientPhone, text, replyTo);
     return;
   }
 
@@ -245,7 +244,7 @@ export async function handleIncomingMessage(
     .eq("id", conv.id);
 
   if (reply) {
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, reply);
+    await sendWhatsAppMessage(replyTo, reply);
   }
 }
 
@@ -255,8 +254,7 @@ async function handleActiveConversation(
   userId: string,
   clientPhone: string,
   messageText: string,
-  phoneNumberId: string,
-  accessToken: string
+  replyTo: string
 ): Promise<void> {
   // Get client demand
   const { data: demandData } = await supabase
@@ -273,11 +271,11 @@ async function handleActiveConversation(
 
   if (lower === "mes critères" || lower === "mes criteres" || lower === "critères" || lower === "criteres") {
     if (!demand) {
-      await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Vous n'avez pas encore de recherche enregistrée. Tapez *bonjour* pour commencer.");
+      await sendWhatsAppMessage(replyTo, "Vous n'avez pas encore de recherche enregistrée. Tapez *bonjour* pour commencer.");
       return;
     }
     const summary = formatDemandSummary(demand);
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, summary);
+    await sendWhatsAppMessage(replyTo, summary);
     return;
   }
 
@@ -285,7 +283,7 @@ async function handleActiveConversation(
     if (demand) {
       await supabase.from("client_demands").update({ is_active: false }).eq("id", demand.id);
     }
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Vos alertes ont été désactivées. Tapez *bonjour* pour les réactiver.");
+    await sendWhatsAppMessage(replyTo, "Vos alertes ont été désactivées. Tapez *bonjour* pour les réactiver.");
     return;
   }
 
@@ -293,11 +291,11 @@ async function handleActiveConversation(
     if (!demand) {
       // Restart onboarding
       await supabase.from("chatbot_conversations").update({ conversation_state: "welcome", context: {} }).eq("id", conv.id);
-      await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, ONBOARDING_MESSAGES.welcome);
+      await sendWhatsAppMessage(replyTo, ONBOARDING_MESSAGES.welcome);
       await supabase.from("chatbot_conversations").update({ conversation_state: "onboarding_name" }).eq("id", conv.id);
       return;
     }
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, `Bonjour ${demand.client_name || ""} ! 👋\n\nVotre recherche est toujours active. Vous pouvez me dire :\n• _\"Montre-moi des annonces\"_\n• _\"Change mon budget\"_\n• _\"Mes critères\"_\n• _\"Stop\"_ pour désactiver`);
+    await sendWhatsAppMessage(replyTo, `Bonjour ${demand.client_name || ""} ! 👋\n\nVotre recherche est toujours active. Vous pouvez me dire :\n• _\"Montre-moi des annonces\"_\n• _\"Change mon budget\"_\n• _\"Mes critères\"_\n• _\"Stop\"_ pour désactiver`);
     return;
   }
 
@@ -305,7 +303,7 @@ async function handleActiveConversation(
   try {
     const kimiKey = process.env.KIMI_API_KEY;
     if (!kimiKey) {
-      await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Service temporairement indisponible. Réessayez plus tard.");
+      await sendWhatsAppMessage(replyTo, "Service temporairement indisponible. Réessayez plus tard.");
       return;
     }
 
@@ -323,7 +321,7 @@ async function handleActiveConversation(
           .limit(5);
 
         if (!annonces?.length) {
-          await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Aucune annonce disponible pour le moment. Vous serez notifié dès qu'une nouvelle annonce correspond à vos critères !");
+          await sendWhatsAppMessage(replyTo, "Aucune annonce disponible pour le moment. Vous serez notifié dès qu'une nouvelle annonce correspond à vos critères !");
           return;
         }
 
@@ -332,16 +330,16 @@ async function handleActiveConversation(
         for (const a of annonces) {
           if (count >= 3) break;
           const msg = formatAnnonceMessage(a);
-          await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, msg);
+          await sendWhatsAppMessage(replyTo, msg);
           count++;
         }
-        await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, `${count} annonce(s) envoyée(s). Dites _\"encore\"_ pour en voir plus.`);
+        await sendWhatsAppMessage(replyTo, `${count} annonce(s) envoyée(s). Dites _\"encore\"_ pour en voir plus.`);
         break;
       }
 
       case "modify_criteria": {
         if (!demand) {
-          await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Vous n'avez pas encore de recherche. Tapez *bonjour* pour commencer.");
+          await sendWhatsAppMessage(replyTo, "Vous n'avez pas encore de recherche. Tapez *bonjour* pour commencer.");
           return;
         }
 
@@ -357,23 +355,23 @@ async function handleActiveConversation(
           await supabase.from("client_demands").update(updates).eq("id", demand.id);
           const { data: updatedDemand } = await supabase.from("client_demands").select("*").eq("id", demand.id).single();
           const summary = formatDemandSummary(updatedDemand as unknown as ClientDemand);
-          await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Critères mis à jour ! ✅\n\n" + summary);
+          await sendWhatsAppMessage(replyTo, "Critères mis à jour ! ✅\n\n" + summary);
         } else {
-          await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Je n'ai pas compris les modifications. Essayez par exemple :\n• _\"Budget 200000\"_\n• _\"Quartier Angondjé\"_\n• _\"3 chambres\"_");
+          await sendWhatsAppMessage(replyTo, "Je n'ai pas compris les modifications. Essayez par exemple :\n• _\"Budget 200000\"_\n• _\"Quartier Angondjé\"_\n• _\"3 chambres\"_");
         }
         break;
       }
 
       case "help":
-        await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "*Commandes disponibles :*\n\n• _\"Mes critères\"_ - voir votre recherche\n• _\"Montre-moi des annonces\"_ - dernières annonces\n• _\"Change mon budget à 200000\"_\n• _\"Je cherche à Angondjé\"_\n• _\"3 chambres minimum\"_\n• _\"Stop\"_ - désactiver les alertes\n• _\"Bonjour\"_ - recommencer");
+        await sendWhatsAppMessage(replyTo, "*Commandes disponibles :*\n\n• _\"Mes critères\"_ - voir votre recherche\n• _\"Montre-moi des annonces\"_ - dernières annonces\n• _\"Change mon budget à 200000\"_\n• _\"Je cherche à Angondjé\"_\n• _\"3 chambres minimum\"_\n• _\"Stop\"_ - désactiver les alertes\n• _\"Bonjour\"_ - recommencer");
         break;
 
       default:
-        await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Je n'ai pas bien compris. Tapez _\"aide\"_ pour voir les commandes disponibles.");
+        await sendWhatsAppMessage(replyTo, "Je n'ai pas bien compris. Tapez _\"aide\"_ pour voir les commandes disponibles.");
     }
   } catch (error) {
     console.error("Chatbot AI error:", error);
-    await sendWhatsAppMessage(phoneNumberId, accessToken, clientPhone, "Désolé, une erreur est survenue. Tapez _\"aide\"_ pour voir les commandes.");
+    await sendWhatsAppMessage(replyTo, "Désolé, une erreur est survenue. Tapez _\"aide\"_ pour voir les commandes.");
   }
 
   // Update last_message_at on demand

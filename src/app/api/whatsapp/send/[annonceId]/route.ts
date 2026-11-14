@@ -1,5 +1,10 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { formatAnnonceMessage, sendWhatsAppMessage, annonceMatchesFilter } from "@/lib/whatsapp";
+import {
+  formatAnnonceMessage,
+  sendWhatsAppMessage,
+  isWahaConfigured,
+  annonceMatchesFilter,
+} from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -24,18 +29,8 @@ export async function POST(
     return NextResponse.json({ error: "Annonce non trouvée" }, { status: 404 });
   }
 
-  // Get user profile for WhatsApp config
-  const { data: profile } = await serviceClient
-    .from("profiles")
-    .select("whatsapp_phone_number_id, whatsapp_access_token")
-    .eq("id", user.id)
-    .single();
-
-  const phoneNumberId = profile?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const accessToken = profile?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
-
-  if (!phoneNumberId || !accessToken) {
-    return NextResponse.json({ error: "WhatsApp Business non configuré" }, { status: 400 });
+  if (!isWahaConfigured()) {
+    return NextResponse.json({ error: "WhatsApp (WAHA) non configuré" }, { status: 400 });
   }
 
   // Get active channels
@@ -55,12 +50,9 @@ export async function POST(
   for (const channel of channels) {
     if (!annonceMatchesFilter(annonce, channel)) continue;
 
-    const result = await sendWhatsAppMessage(
-      phoneNumberId,
-      accessToken,
-      channel.phone_number,
-      message
-    );
+    const result = await sendWhatsAppMessage(channel.phone_number, message, {
+        group: channel.channel_type === "group",
+      });
 
     // Log
     await serviceClient.from("whatsapp_logs").insert({

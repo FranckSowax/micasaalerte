@@ -9,6 +9,18 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, Eye, EyeOff } from "lucide-react";
 import type { Profile } from "@/types/database";
 
+const WA_STATUS_LABELS: Record<string, string> = {
+  WORKING: "Connecté",
+  SCAN_QR_CODE: "QR code à scanner",
+  STARTING: "Démarrage",
+  STOPPED: "Session arrêtée",
+  FAILED: "En échec",
+  NO_SESSION: "Session inexistante",
+  NOT_CONFIGURED: "WAHA non configuré",
+  UNREACHABLE: "Serveur WAHA injoignable",
+  ERROR: "Erreur WAHA",
+};
+
 export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,10 +32,22 @@ export default function SettingsPage() {
     whatsapp_phone: "",
     rapidapi_key: "",
     kimi_api_key: "",
-    whatsapp_phone_number_id: "",
-    whatsapp_access_token: "",
   });
+  const [waStatus, setWaStatus] = useState<{
+    configured: boolean;
+    session: string;
+    status: string;
+    phone?: string | null;
+    name?: string | null;
+  } | null>(null);
   const supabase = createClient();
+
+  useEffect(() => {
+    fetch("/api/whatsapp/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setWaStatus)
+      .catch(() => setWaStatus(null));
+  }, []);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -43,8 +67,6 @@ export default function SettingsPage() {
           whatsapp_phone: data.whatsapp_phone || "",
           rapidapi_key: data.rapidapi_key || "",
           kimi_api_key: data.kimi_api_key || "",
-          whatsapp_phone_number_id: data.whatsapp_phone_number_id || "",
-          whatsapp_access_token: data.whatsapp_access_token || "",
         });
       }
       setLoading(false);
@@ -63,8 +85,6 @@ export default function SettingsPage() {
         whatsapp_phone: form.whatsapp_phone,
         rapidapi_key: form.rapidapi_key || null,
         kimi_api_key: form.kimi_api_key || null,
-        whatsapp_phone_number_id: form.whatsapp_phone_number_id || null,
-        whatsapp_access_token: form.whatsapp_access_token || null,
       })
       .eq("id", profile!.id);
 
@@ -161,31 +181,41 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* WhatsApp Business */}
+      {/* WhatsApp (WAHA) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">WhatsApp Business</CardTitle>
-          <CardDescription>Configuration de l&apos;API WhatsApp Cloud</CardDescription>
+          <CardTitle className="text-lg">WhatsApp</CardTitle>
+          <CardDescription>
+            Connexion via WAHA. Le serveur et la session se règlent dans les variables
+            d&apos;environnement ; le numéro se relie en scannant le QR code dans le tableau de bord WAHA.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Phone Number ID</label>
-            <Input
-              type={showKeys ? "text" : "password"}
-              placeholder="1234567890"
-              value={form.whatsapp_phone_number_id}
-              onChange={(e) => setForm({ ...form, whatsapp_phone_number_id: e.target.value })}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Access Token</label>
-            <Input
-              type={showKeys ? "text" : "password"}
-              placeholder="EAAx..."
-              value={form.whatsapp_access_token}
-              onChange={(e) => setForm({ ...form, whatsapp_access_token: e.target.value })}
-            />
-          </div>
+        <CardContent className="space-y-2 text-sm">
+          {!waStatus ? (
+            <p className="text-muted-foreground">État indisponible.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">État</span>
+                <Badge variant={waStatus.status === "WORKING" ? "default" : "outline"}>
+                  {WA_STATUS_LABELS[waStatus.status] || waStatus.status}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Session</span>
+                <span>{waStatus.session}</span>
+              </div>
+              {waStatus.phone && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Numéro relié</span>
+                  <span>
+                    +{waStatus.phone}
+                    {waStatus.name ? ` (${waStatus.name})` : ""}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

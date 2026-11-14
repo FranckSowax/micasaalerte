@@ -7,7 +7,7 @@ SaaS de suivi intelligent d'annonces immobilieres au Gabon.
 - Scraping automatique des groupes Facebook (RapidAPI)
 - Analyse IA des annonces avec Claude (extraction structuree)
 - Stockage multi-tenant dans Supabase avec RLS
-- Envoi automatique par WhatsApp (Business Cloud API)
+- Envoi automatique par WhatsApp (via WAHA)
 - Dashboard web avec filtres et statistiques
 
 ## Demarrage rapide
@@ -87,7 +87,7 @@ immo-tracker/
 - Supabase (PostgreSQL + Auth + RLS)
 - Claude API (analyse IA)
 - RapidAPI Facebook Scraper3
-- WhatsApp Business Cloud API
+- WhatsApp via WAHA (auto-heberge)
 - Railway (deploiement)
 
 ## Deploiement sur Railway
@@ -120,7 +120,28 @@ CRON_TARGET_URL=https://votre-app.up.railway.app CRON_SECRET=... node scripts/ru
 
 Executer `supabase_schema.sql` en entier dans Supabase → SQL Editor (la partie « extension » est rejouable).
 
-### 4. Webhook WhatsApp (chatbot)
+### 4. WhatsApp via WAHA
 
-Chez Meta : URL `https://votre-app.up.railway.app/api/webhook/whatsapp`, jeton = `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
-`WHATSAPP_APP_SECRET` est obligatoire : sans lui le webhook refuse tous les messages.
+L envoi et la reception passent par [WAHA](https://waha.devlike.pro), un serveur WhatsApp auto-heberge
+(image Docker `devlikeapro/waha`) relie a un numero en scannant un QR code.
+
+Cote application (service web) :
+
+- `WAHA_API_URL`, `WAHA_API_KEY`, `WAHA_SESSION` : serveur, cle et session a utiliser.
+- `WAHA_WEBHOOK_HMAC_KEY` : cle de signature des messages entrants (obligatoire pour le chatbot).
+- `WAHA_OWNER_USER_ID` : compte destinataire des messages entrants, s il y a plusieurs comptes.
+
+Cote serveur WAHA :
+
+- `WAHA_API_KEY` : meme valeur que dans l application.
+- `WHATSAPP_HOOK_URL=https://votre-app.up.railway.app/api/webhook/waha`
+- `WHATSAPP_HOOK_EVENTS=message`
+- `WHATSAPP_HOOK_HMAC_KEY` : meme valeur que `WAHA_WEBHOOK_HMAC_KEY`.
+- Un volume persistant pour les sessions, sinon le QR code est a rescanner a chaque redemarrage.
+
+Destinataires des canaux : un numero (`+24177123456`) ou un identifiant WAHA complet
+(`1203...@g.us` pour un groupe, `...@newsletter` pour une chaine).
+
+L etat de la connexion s affiche dans Parametres. WAHA pilote WhatsApp Web, ce n est pas l API
+officielle : des envois en masse peuvent faire bloquer le numero
+(voir https://waha.devlike.pro/docs/overview/how-to-avoid-blocking/).

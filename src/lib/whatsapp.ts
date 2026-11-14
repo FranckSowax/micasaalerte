@@ -53,39 +53,118 @@ export function formatAnnonceMessage(annonce: Annonce): string {
   return lines.join("\n");
 }
 
+// ============================================================
+// Envoi via WAHA (WhatsApp HTTP API auto-hébergée) — https://waha.devlike.pro
+// Un seul serveur WAHA et une seule session pour toute l'application,
+// configurés par variables d'environnement.
+// ============================================================
+
+const WAHA_TIMEOUT_MS = 30_000;
+
+interface WahaConfig {
+  baseUrl: string;
+  apiKey: string;
+  session: string;
+}
+
+function getWahaConfig(): WahaConfig | null {
+  const baseUrl = process.env.WAHA_API_URL?.replace(/\/+$/, "");
+  const apiKey = process.env.WAHA_API_KEY;
+  if (!baseUrl || !apiKey) return null;
+  return { baseUrl, apiKey, session: process.env.WAHA_SESSION || "default" };
+}
+
+/** Indique si le serveur WAHA est configuré (WAHA_API_URL et WAHA_API_KEY). */
+export function isWahaConfigured(): boolean {
+  return getWahaConfig() !== null;
+}
+
+/** Nom de la session WAHA utilisée par l'application. */
+export function getWahaSession(): string {
+  return process.env.WAHA_SESSION || "default";
+}
+
+/**
+ * Convertit un destinataire en identifiant de conversation WAHA.
+ * - déjà un identifiant (`...@c.us`, `...@g.us`, `...@newsletter`, `...@lid`) : inchangé
+ * - numéro de téléphone : chiffres seuls + `@c.us` (ou `@g.us` pour un groupe)
+ *
+ * @example toChatId("+241 77 12 34 56") // "24177123456@c.us"
+ */
+export function toChatId(recipient: string, options: { group?: boolean } = {}): string {
+  const value = recipient.trim();
+  if (value.includes("@")) return value;
+  return `${value.replace(/\D/g, "")}@${options.group ? "g.us" : "c.us"}`;
+}
+
+/** Appel authentifié à l'API WAHA. Lève une erreur si WAHA n'est pas configuré. */
+export async function wahaFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const config = getWahaConfig();
+  if (!config) throw new Error("WAHA non configuré (WAHA_API_URL / WAHA_API_KEY)");
+
+  return fetch(`${config.baseUrl}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Api-Key": config.apiKey,
+      ...init.headers,
+    },
+    signal: AbortSignal.timeout(WAHA_TIMEOUT_MS),
+  });
+}
+
+// WHY: la forme de l'identifiant renvoyé dépend du moteur WAHA (WEBJS, NOWEB, GOWS).
+function extractMessageId(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const d = data as Record<string, unknown>;
+  if (typeof d.id === "string") return d.id;
+  const nestedId = d.id as Record<string, unknown> | undefined;
+  if (nestedId && typeof nestedId._serialized === "string") return nestedId._serialized;
+  if (nestedId && typeof nestedId.id === "string") return nestedId.id;
+  const key = d.key as Record<string, unknown> | undefined;
+  if (key && typeof key.id === "string") return key.id;
+  return undefined;
+}
+
+/**
+ * Envoie un message texte WhatsApp via WAHA. Ne lève jamais d'erreur :
+ * l'échec est renvoyé dans le résultat pour être journalisé par l'appelant.
+ *
+ * @example
+ * await sendWhatsAppMessage("+24177123456", "Bonjour");
+ * await sendWhatsAppMessage("120363012345678901", "Annonce", { group: true });
+ */
 export async function sendWhatsAppMessage(
-  phoneNumberId: string,
-  accessToken: string,
-  recipientPhone: string,
-  message: string
+  recipient: string,
+  message: string,
+  options: { group?: boolean } = {}
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const response = await fetch(
-    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
-    {
+  const config = getWahaConfig();
+  if (!config) return { success: false, error: "WAHA non configuré" };
+
+  const chatId = toChatId(recipient, options);
+  if (chatId.startsWith("@")) return { success: false, error: "Destinataire invalide" };
+
+  try {
+    const response = await wahaFetch("/api/sendText", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: recipientPhone.replace(/\D/g, ""),
-        type: "text",
-        text: { body: message },
-      }),
+      body: JSON.stringify({ session: config.session, chatId, text: message }),
+    });
+
+    const data: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const d = (data ?? {}) as Record<string, unknown>;
+      const detail = typeof d.message === "string" ? d.message : typeof d.error === "string" ? d.error : "";
+      return { success: false, error: `WAHA ${response.status}${detail ? ` : ${detail}` : ""}` };
     }
-  );
 
-  const data = await response.json();
-
-  if (data.messages?.[0]?.id) {
-    return { success: true, messageId: data.messages[0].id };
+    return { success: true, messageId: extractMessageId(data) };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "erreur inconnue";
+    return { success: false, error: `WAHA injoignable : ${reason}` };
   }
-
-  return {
-    success: false,
-    error: data.error?.message || "Erreur inconnue WhatsApp",
-  };
 }
 
 export function annonceMatchesFilter(

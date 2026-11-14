@@ -1,5 +1,10 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { formatAnnonceMessage, sendWhatsAppMessage, annonceMatchesFilter } from "@/lib/whatsapp";
+import {
+  formatAnnonceMessage,
+  sendWhatsAppMessage,
+  isWahaConfigured,
+  annonceMatchesFilter,
+} from "@/lib/whatsapp";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { NextResponse } from "next/server";
 
@@ -11,6 +16,10 @@ export const POST = handleCron;
 async function handleCron(request: Request) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  if (!isWahaConfigured()) {
+    return NextResponse.json({ error: "WAHA non configuré" }, { status: 503 });
   }
 
   const serviceClient = createServiceClient();
@@ -40,16 +49,6 @@ async function handleCron(request: Request) {
   let totalSent = 0;
 
   for (const [userId, userAnnonces] of Array.from(byUser.entries())) {
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("whatsapp_phone_number_id, whatsapp_access_token")
-      .eq("id", userId)
-      .single();
-
-    const phoneNumberId = profile?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = profile?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
-    if (!phoneNumberId || !accessToken) continue;
-
     const { data: channels } = await serviceClient
       .from("whatsapp_channels")
       .select("*")
@@ -65,7 +64,9 @@ async function handleCron(request: Request) {
       for (const channel of channels) {
         if (!annonceMatchesFilter(annonce, channel)) continue;
 
-        const result = await sendWhatsAppMessage(phoneNumberId, accessToken, channel.phone_number, message);
+        const result = await sendWhatsAppMessage(channel.phone_number, message, {
+        group: channel.channel_type === "group",
+      });
 
         await serviceClient.from("whatsapp_logs").insert({
           user_id: userId,
