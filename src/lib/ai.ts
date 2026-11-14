@@ -1,5 +1,65 @@
 import OpenAI from "openai";
 
+// ============================================================
+// Fournisseur IA : OpenRouter (modèle z.ai GLM) si OPENROUTER_API_KEY est défini,
+// sinon Kimi/Moonshot comme auparavant. Le modèle se change sans redéployer le code
+// via OPENROUTER_MODEL.
+// ============================================================
+const OPENROUTER_DEFAULT_MODEL = "z-ai/glm-5.3-flash";
+const KIMI_MODEL = "kimi-k2-0711-preview";
+
+interface AIProvider {
+  client: OpenAI;
+  model: string;
+  jsonMode: boolean;
+  /** Marge de tokens pour le raisonnement interne du modèle, qui compte dans max_tokens. */
+  reasoningBudget: number;
+}
+
+/**
+ * @param legacyKey clé Kimi propre à un utilisateur (profiles.kimi_api_key).
+ *                  Ignorée quand OpenRouter est configuré : ce n est pas une clé OpenRouter.
+ */
+function getAIProvider(legacyKey?: string | null): AIProvider {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    return {
+      client: new OpenAI({
+        apiKey: openRouterKey,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: { "X-Title": "Mi Casa Alerte" },
+      }),
+      model: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
+      jsonMode: true,
+      reasoningBudget: 3000,
+    };
+  }
+
+  return {
+    client: new OpenAI({
+      apiKey: legacyKey || process.env.KIMI_API_KEY,
+      baseURL: "https://api.moonshot.ai/v1",
+    }),
+    model: KIMI_MODEL,
+    jsonMode: false,
+    reasoningBudget: 0,
+  };
+}
+
+/** Indique si un fournisseur IA est utilisable (clé OpenRouter, ou clé Kimi en repli). */
+export function isAIConfigured(legacyKey?: string | null): boolean {
+  return Boolean(process.env.OPENROUTER_API_KEY || legacyKey || process.env.KIMI_API_KEY);
+}
+
+// Les modèles entourent parfois le JSON de balises markdown ou de texte :
+// on garde ce qui se trouve entre la première accolade et la dernière.
+function extractJson(content: string): string {
+  const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  return start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
+}
+
 const SYSTEM_PROMPT = `Tu es un assistant spécialisé dans l'analyse d'annonces immobilières au Gabon.
 Analyse le post Facebook suivant et extrais les informations en JSON strict.
 
@@ -48,14 +108,12 @@ export async function analyzePost(
   text: string,
   apiKey?: string
 ): Promise<AIExtractionResult> {
-  const client = new OpenAI({
-    apiKey: apiKey || process.env.KIMI_API_KEY,
-    baseURL: "https://api.moonshot.ai/v1",
-  });
+  const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
 
   const response = await client.chat.completions.create({
-    model: "kimi-k2-0711-preview",
-    max_tokens: 1024,
+    model,
+    ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+    max_tokens: 1024 + reasoningBudget,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: `Analyse ce post Facebook :\n\n${text}` },
@@ -68,13 +126,7 @@ export async function analyzePost(
     throw new Error("Pas de réponse de l'IA");
   }
 
-  // Nettoyer la réponse si elle contient des blocs markdown
-  const cleaned = content
-    .replace(/```json\s*/g, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  return JSON.parse(cleaned) as AIExtractionResult;
+  return JSON.parse(extractJson(content)) as AIExtractionResult;
 }
 
 // Chatbot intent interpretation
@@ -119,18 +171,16 @@ export async function interpretClientMessage(
   currentDemand: unknown,
   apiKey?: string
 ): Promise<ChatbotIntent> {
-  const client = new OpenAI({
-    apiKey: apiKey || process.env.KIMI_API_KEY,
-    baseURL: "https://api.moonshot.ai/v1",
-  });
+  const { client, model, jsonMode, reasoningBudget } = getAIProvider(apiKey);
 
   const context = currentDemand
     ? `\nCritères actuels du client : ${JSON.stringify(currentDemand)}`
     : "";
 
   const response = await client.chat.completions.create({
-    model: "kimi-k2-0711-preview",
-    max_tokens: 256,
+    model,
+    ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+    max_tokens: 256 + reasoningBudget,
     messages: [
       { role: "system", content: CHATBOT_SYSTEM_PROMPT },
       { role: "user", content: `Message du client : "${messageText}"${context}` },
@@ -141,6 +191,5 @@ export async function interpretClientMessage(
   const content = response.choices[0]?.message?.content;
   if (!content) return { type: "unknown", changes: {} };
 
-  const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(cleaned) as ChatbotIntent;
+  return JSON.parse(extractJson(content)) as ChatbotIntent;
 }
