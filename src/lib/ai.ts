@@ -134,7 +134,9 @@ export async function analyzePost(text: string, apiKey?: string | null): Promise
 
   const content = response.choices[0]?.message?.content;
   if (!content) {
-    throw new Error("Pas de réponse de l'IA");
+    // La raison d'arrêt distingue une réponse coupée (length) d'un refus du modèle (content_filter).
+    const reason = response.choices[0]?.finish_reason ?? "aucun choix renvoyé";
+    throw new Error(`Pas de réponse de l'IA (${reason})`);
   }
 
   const e = sanitizeExtraction(JSON.parse(extractJson(content)), text);

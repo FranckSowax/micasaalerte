@@ -86,9 +86,11 @@ async function handleCron(request: Request) {
 
     const times = posts.map((p) => (p.publishedAt ? Date.parse(p.publishedAt) : NaN)).filter((t) => !Number.isNaN(t));
     const spanMinutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60_000) : null;
-    // Si la plus ancienne publication du flux est nouvelle pour nous, des publications
-    // encore plus anciennes ont pu sortir du flux avant d'être lues.
-    let oldestWasNew: boolean | null = null;
+    // Si la plus ancienne publication du flux n'avait jamais été vue, des publications
+    // encore plus anciennes ont pu sortir du flux avant d'être lues. Une publication déjà
+    // vue mais retentée après une erreur IA ne compte pas : elle donnait de fausses alertes.
+    let oldestChecked = false;
+    let oldestWasNew = false;
     // Même texte publié plusieurs fois de suite par le même auteur : analysé une seule fois.
     const seenTexts = new Set<string>();
 
@@ -138,13 +140,16 @@ async function handleCron(request: Request) {
           images: post.images,
           publishedAt: post.publishedAt,
           legacyAiKey: source.aiKey,
+          onFirstSeen: () => {
+            if (!oldestChecked) oldestWasNew = true;
+          },
           onAiError: (message) => {
             const key = message.slice(0, 220);
             aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
           },
         });
 
-        if (oldestWasNew === null) oldestWasNew = status !== "known";
+        oldestChecked = true;
         if (status === "known") stats.known++;
         else {
           analyses++;
@@ -156,7 +161,7 @@ async function handleCron(request: Request) {
       }
     }
 
-    feeds.push({ items: posts.length, spanMinutes, possibleGap: oldestWasNew === true });
+    feeds.push({ items: posts.length, spanMinutes, possibleGap: oldestWasNew });
   }
 
   // Rattrapage : publications mémorisées restées en attente ou en erreur, même sorties du flux.

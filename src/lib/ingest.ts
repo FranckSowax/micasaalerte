@@ -24,6 +24,8 @@ export interface IngestInput {
   legacyAiKey?: string | null;
   /** Appelé avec le message d'erreur quand l'analyse IA échoue (pour le diagnostic). */
   onAiError?: (message: string) => void;
+  /** Appelé quand la publication est rencontrée pour la toute première fois. */
+  onFirstSeen?: () => void;
 }
 
 /**
@@ -55,6 +57,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput): Pro
 
   let rawPostId = seen?.id as string | undefined;
   if (!rawPostId) {
+    input.onFirstSeen?.();
     const { data: rawPost } = await client
       .from("raw_posts")
       .insert({
