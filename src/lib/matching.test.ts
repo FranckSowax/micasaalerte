@@ -147,6 +147,61 @@ describe("score des préférences", () => {
   });
 });
 
+describe("matching par rayon", () => {
+  const cherche = (overrides: Partial<ClientDemand> = {}) => demand({ filter_quartiers: ["Angondjé"], filter_ville: "", ...overrides });
+
+  it("retient un quartier voisin au nom différent, dans le rayon par défaut (5 km)", () => {
+    // Okala est à 4,7 km du centre d'Angondjé ; par le nom seul, il aurait été écarté.
+    const m = matchDemand(annonce({ quartier: "Okala", ville: null }), cherche());
+    expect(m.score).toBe(100);
+    expect(m.reasons.join(" ")).toMatch(/km de Angondjé/);
+  });
+
+  it("reconnaît le même endroit écrit autrement", () => {
+    expect(matchDemand(annonce({ quartier: "angondje premiere cite", ville: null }), cherche()).score).toBe(100);
+    expect(matchDemand(annonce({ quartier: "Première Cité", ville: null }), cherche()).score).toBe(100);
+  });
+
+  it("écarte un quartier éloigné", () => {
+    // Nzeng Ayong est à 13,6 km d'Angondjé.
+    const m = matchDemand(annonce({ quartier: "Nzeng-Ayong", ville: null }), cherche());
+    expect(m.score).toBe(0);
+    expect(m.eligible).toBe(true); // la distance est une préférence, pas un blocage
+    expect(shouldSend(m, cherche())).toBe(false);
+  });
+
+  it("respecte le rayon propre à l'abonné", () => {
+    const okala = annonce({ quartier: "Okala", ville: null });
+    expect(matchDemand(okala, cherche({ geo_radius_km: 2 })).score).toBe(0);
+    expect(matchDemand(annonce({ quartier: "Alibandeng", ville: null }), cherche({ geo_radius_km: 10 })).score).toBe(100);
+  });
+
+  it("utilise le point précis de l'abonné quand il est renseigné", () => {
+    // Point situé à Nzeng Ayong, alors que le quartier préféré écrit est Angondjé.
+    const d = cherche({ geo_lat: 0.4271, geo_lon: 9.4822, geo_radius_km: 4 });
+    expect(matchDemand(annonce({ quartier: "Sotega", ville: null }), d).score).toBe(100);
+    expect(matchDemand(annonce({ quartier: "Okala", ville: null }), d).score).toBe(0);
+  });
+
+  it("utilise les coordonnées enregistrées avec l'annonce", () => {
+    const stored = annonce({ quartier: "lieu inconnu du référentiel", ville: null, details: { geo: { lat: 0.5288, lon: 9.4144, lieu: "Angondjé", precision: "quartier" } } });
+    expect(matchDemand(stored, cherche()).score).toBe(100);
+  });
+
+  it("retombe sur la comparaison des noms quand l'annonce n'est pas localisable", () => {
+    expect(matchDemand(annonce({ quartier: "cité inconnue", ville: null }), cherche()).score).toBe(0);
+    expect(matchDemand(annonce({ quartier: null, ville: null }), cherche()).score).toBe(50);
+    // Quartier préféré absent du référentiel : comparaison par nom, comme avant.
+    const d = cherche({ filter_quartiers: ["Cité Magnolia"] });
+    expect(matchDemand(annonce({ quartier: "cité magnolia", ville: null }), d).score).toBe(100);
+  });
+
+  it("ne traite pas une ville comme un point précis", () => {
+    // « Owendo » est une commune entière : pas de calcul de distance, comparaison par nom.
+    expect(matchDemand(annonce({ quartier: "Owendo", ville: null }), cherche()).score).toBe(0);
+  });
+});
+
 describe("plage silencieuse et journée locale (Africa/Libreville, UTC+1)", () => {
   it("convertit l'heure UTC en heure locale", () => {
     expect(localHour(new Date("2026-11-14T23:30:00Z"))).toBe(0);

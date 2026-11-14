@@ -1,0 +1,1158 @@
+[
+ {
+  "name": "Akok",
+  "kind": "localite",
+  "lat": 0.5124,
+  "lon": 9.73729
+ },
+ {
+  "name": "Atèm",
+  "kind": "localite",
+  "lat": 0.61021,
+  "lon": 9.61077
+ },
+ {
+  "name": "Ayémé",
+  "kind": "localite",
+  "lat": 0.3161,
+  "lon": 9.67624
+ },
+ {
+  "name": "Cité CimGabon",
+  "kind": "localite",
+  "lat": 0.36231,
+  "lon": 9.74906
+ },
+ {
+  "name": "Cité SETRAG",
+  "kind": "localite",
+  "lat": 0.36958,
+  "lon": 9.74475
+ },
+ {
+  "name": "Débarcadère de Bambouchine",
+  "kind": "localite",
+  "lat": 0.43196,
+  "lon": 9.53374
+ },
+ {
+  "name": "Donguila",
+  "kind": "localite",
+  "lat": 0.19987,
+  "lon": 9.7323
+ },
+ {
+  "name": "Elong Eko",
+  "kind": "localite",
+  "lat": 0.22733,
+  "lon": 9.77311
+ },
+ {
+  "name": "Essassa",
+  "kind": "localite",
+  "lat": 0.39571,
+  "lon": 9.60837
+ },
+ {
+  "name": "Fé Dzo Beach",
+  "kind": "localite",
+  "lat": 0.50752,
+  "lon": 9.37025
+ },
+ {
+  "name": "Foulayong",
+  "kind": "localite",
+  "lat": 0.25483,
+  "lon": 9.78142
+ },
+ {
+  "name": "Kougouleu",
+  "kind": "localite",
+  "lat": 0.40381,
+  "lon": 9.88752
+ },
+ {
+  "name": "La Plaine Akanabour",
+  "kind": "localite",
+  "lat": 0.33556,
+  "lon": 9.67198
+ },
+ {
+  "name": "Malibé",
+  "kind": "localite",
+  "lat": 0.54375,
+  "lon": 9.37891
+ },
+ {
+  "name": "Massica",
+  "kind": "localite",
+  "lat": 0.32869,
+  "lon": 9.75811
+ },
+ {
+  "name": "Mbol Zok",
+  "kind": "localite",
+  "lat": 0.18738,
+  "lon": 9.75293
+ },
+ {
+  "name": "Mebba",
+  "kind": "localite",
+  "lat": 0.44809,
+  "lon": 9.75579
+ },
+ {
+  "name": "Moka",
+  "kind": "localite",
+  "lat": 0.65149,
+  "lon": 9.4706
+ },
+ {
+  "name": "N'Gava",
+  "kind": "localite",
+  "lat": 0.17401,
+  "lon": 9.81116
+ },
+ {
+  "name": "Nkok",
+  "kind": "localite",
+  "lat": 0.38831,
+  "lon": 9.62359
+ },
+ {
+  "name": "Nkoltang",
+  "kind": "localite",
+  "lat": 0.36381,
+  "lon": 9.67427,
+  "aliases": [
+   "N'Koltang"
+  ]
+ },
+ {
+  "name": "No Ayong",
+  "kind": "localite",
+  "lat": 0.61553,
+  "lon": 9.67625
+ },
+ {
+  "name": "Nzamaligue",
+  "kind": "localite",
+  "lat": 0.30638,
+  "lon": 9.77334
+ },
+ {
+  "name": "Nzog Bour",
+  "kind": "localite",
+  "lat": 0.57536,
+  "lon": 9.69736
+ },
+ {
+  "name": "Oubendzi",
+  "kind": "localite",
+  "lat": 0.21711,
+  "lon": 9.7567
+ },
+ {
+  "name": "Pointe Denis",
+  "kind": "localite",
+  "lat": 0.32919,
+  "lon": 9.36542
+ },
+ {
+  "name": "Port d'Owendo",
+  "kind": "localite",
+  "lat": 0.28679,
+  "lon": 9.50474
+ },
+ {
+  "name": "RIO",
+  "kind": "localite",
+  "lat": 0.40571,
+  "lon": 9.46438
+ },
+ {
+  "name": "Village d'Ekwata",
+  "kind": "localite",
+  "lat": 0.32568,
+  "lon": 9.31562
+ },
+ {
+  "name": "Acaé",
+  "kind": "quartier",
+  "lat": 0.34759,
+  "lon": 9.47417
+ },
+ {
+  "name": "Aéroport",
+  "kind": "quartier",
+  "lat": 0.4615,
+  "lon": 9.41006
+ },
+ {
+  "name": "Akébé Frontière_ Baraka",
+  "kind": "quartier",
+  "lat": 0.38611,
+  "lon": 9.46296,
+  "aliases": [
+   "Akébé Frontière",
+   "Baraka"
+  ]
+ },
+ {
+  "name": "Akébé Plaine",
+  "kind": "quartier",
+  "lat": 0.39317,
+  "lon": 9.46426
+ },
+ {
+  "name": "Akébé-Kinguélé",
+  "kind": "quartier",
+  "lat": 0.40051,
+  "lon": 9.47236
+ },
+ {
+  "name": "Akébé-Ville",
+  "kind": "quartier",
+  "lat": 0.39583,
+  "lon": 9.45829
+ },
+ {
+  "name": "Akémindjogoni",
+  "kind": "quartier",
+  "lat": 0.40048,
+  "lon": 9.44386
+ },
+ {
+  "name": "Akournam I",
+  "kind": "quartier",
+  "lat": 0.33683,
+  "lon": 9.51193
+ },
+ {
+  "name": "Akournam II",
+  "kind": "quartier",
+  "lat": 0.34711,
+  "lon": 9.51041
+ },
+ {
+  "name": "Alénakirie",
+  "kind": "quartier",
+  "lat": 0.3064,
+  "lon": 9.51104
+ },
+ {
+  "name": "Alibandeng",
+  "kind": "quartier",
+  "lat": 0.4559,
+  "lon": 9.42752
+ },
+ {
+  "name": "Ambilambani",
+  "kind": "quartier",
+  "lat": 0.38617,
+  "lon": 9.46004
+ },
+ {
+  "name": "Ambowè",
+  "kind": "quartier",
+  "lat": 0.44556,
+  "lon": 9.43389
+ },
+ {
+  "name": "Ancien Sobraga",
+  "kind": "quartier",
+  "lat": 0.42057,
+  "lon": 9.45023
+ },
+ {
+  "name": "Angondjé",
+  "kind": "quartier",
+  "lat": 0.52882,
+  "lon": 9.41439
+ },
+ {
+  "name": "Angondjé Village",
+  "kind": "quartier",
+  "lat": 0.51157,
+  "lon": 9.43002
+ },
+ {
+  "name": "Atong Abe",
+  "kind": "quartier",
+  "lat": 0.41176,
+  "lon": 9.45118
+ },
+ {
+  "name": "Atong-Abe",
+  "kind": "quartier",
+  "lat": 0.40862,
+  "lon": 9.44844
+ },
+ {
+  "name": "Atsib-tchoss",
+  "kind": "quartier",
+  "lat": 0.41237,
+  "lon": 9.45922
+ },
+ {
+  "name": "Avea",
+  "kind": "quartier",
+  "lat": 0.40968,
+  "lon": 9.46272
+ },
+ {
+  "name": "Avorbam",
+  "kind": "quartier",
+  "lat": 0.50914,
+  "lon": 9.39036
+ },
+ {
+  "name": "Awendjé",
+  "kind": "quartier",
+  "lat": 0.38968,
+  "lon": 9.47347
+ },
+ {
+  "name": "Awoungou",
+  "kind": "quartier",
+  "lat": 0.31554,
+  "lon": 9.5084
+ },
+ {
+  "name": "Baie des Rois",
+  "kind": "quartier",
+  "lat": 0.40512,
+  "lon": 9.43142
+ },
+ {
+  "name": "Bambouchine",
+  "kind": "quartier",
+  "lat": 0.43822,
+  "lon": 9.52085
+ },
+ {
+  "name": "Baraka-Mission",
+  "kind": "quartier",
+  "lat": 0.37466,
+  "lon": 9.45757
+ },
+ {
+  "name": "Barakounda",
+  "kind": "quartier",
+  "lat": 0.32434,
+  "lon": 9.48602
+ },
+ {
+  "name": "Bas de Gué-Gué",
+  "kind": "quartier",
+  "lat": 0.43527,
+  "lon": 9.43471
+ },
+ {
+  "name": "Bassin du PK5",
+  "kind": "quartier",
+  "lat": 0.40562,
+  "lon": 9.47436
+ },
+ {
+  "name": "Batavéa",
+  "kind": "quartier",
+  "lat": 0.3847,
+  "lon": 9.45131
+ },
+ {
+  "name": "Batterie 4",
+  "kind": "quartier",
+  "lat": 0.41923,
+  "lon": 9.42879
+ },
+ {
+  "name": "Beau-Séjour",
+  "kind": "quartier",
+  "lat": 0.39504,
+  "lon": 9.48576
+ },
+ {
+  "name": "Bel-Air",
+  "kind": "quartier",
+  "lat": 0.4503,
+  "lon": 9.44403
+ },
+ {
+  "name": "Belle-Vue",
+  "kind": "quartier",
+  "lat": 0.39513,
+  "lon": 9.46884
+ },
+ {
+  "name": "Bikélé",
+  "kind": "quartier",
+  "lat": 0.4133,
+  "lon": 9.55287
+ },
+ {
+  "name": "Bizango-Rail",
+  "kind": "quartier",
+  "lat": 0.39353,
+  "lon": 9.52857
+ },
+ {
+  "name": "Camp des Boys",
+  "kind": "quartier",
+  "lat": 0.42637,
+  "lon": 9.4251
+ },
+ {
+  "name": "Campagne",
+  "kind": "quartier",
+  "lat": 0.40691,
+  "lon": 9.45313
+ },
+ {
+  "name": "Cap Esterias",
+  "kind": "quartier",
+  "lat": 0.611,
+  "lon": 9.32025
+ },
+ {
+  "name": "Centre-Ville",
+  "kind": "quartier",
+  "lat": 0.39098,
+  "lon": 9.44434
+ },
+ {
+  "name": "Charbonnages",
+  "kind": "quartier",
+  "lat": 0.43617,
+  "lon": 9.44624
+ },
+ {
+  "name": "Cité Damas",
+  "kind": "quartier",
+  "lat": 0.38509,
+  "lon": 9.47929
+ },
+ {
+  "name": "Cité de la Caisse",
+  "kind": "quartier",
+  "lat": 0.41698,
+  "lon": 9.47133
+ },
+ {
+  "name": "Cité de la Démocratie",
+  "kind": "quartier",
+  "lat": 0.43337,
+  "lon": 9.45593
+ },
+ {
+  "name": "Cité des Ambassadeurs",
+  "kind": "quartier",
+  "lat": 0.42954,
+  "lon": 9.48525
+ },
+ {
+  "name": "Cité horizon",
+  "kind": "quartier",
+  "lat": 0.40091,
+  "lon": 9.51023
+ },
+ {
+  "name": "Cité Mébiame",
+  "kind": "quartier",
+  "lat": 0.41252,
+  "lon": 9.46641
+ },
+ {
+  "name": "Cocotiers",
+  "kind": "quartier",
+  "lat": 0.4147,
+  "lon": 9.4517
+ },
+ {
+  "name": "Derrière l'Hôpital",
+  "kind": "quartier",
+  "lat": 0.39278,
+  "lon": 9.45136
+ },
+ {
+  "name": "Derrière la Prison",
+  "kind": "quartier",
+  "lat": 0.42381,
+  "lon": 9.4389
+ },
+ {
+  "name": "Glass",
+  "kind": "quartier",
+  "lat": 0.37712,
+  "lon": 9.4533
+ },
+ {
+  "name": "Grand Village",
+  "kind": "quartier",
+  "lat": 0.30908,
+  "lon": 9.49529
+ },
+ {
+  "name": "Haut de Gué-Gué",
+  "kind": "quartier",
+  "lat": 0.42945,
+  "lon": 9.42955
+ },
+ {
+  "name": "I.A.I-Golf",
+  "kind": "quartier",
+  "lat": 0.36771,
+  "lon": 9.48219
+ },
+ {
+  "name": "Igoumie",
+  "kind": "quartier",
+  "lat": 0.36518,
+  "lon": 9.51966
+ },
+ {
+  "name": "Institut des Sports",
+  "kind": "quartier",
+  "lat": 0.35971,
+  "lon": 9.4792
+ },
+ {
+  "name": "Kosmoparc",
+  "kind": "quartier",
+  "lat": 0.40368,
+  "lon": 9.46538
+ },
+ {
+  "name": "La Nomba",
+  "kind": "quartier",
+  "lat": 0.34292,
+  "lon": 9.48988
+ },
+ {
+  "name": "Lalala-Dakar",
+  "kind": "quartier",
+  "lat": 0.37221,
+  "lon": 9.47026
+ },
+ {
+  "name": "Lalala-Droite",
+  "kind": "quartier",
+  "lat": 0.36727,
+  "lon": 9.46408
+ },
+ {
+  "name": "Lalala-Gauche",
+  "kind": "quartier",
+  "lat": 0.36895,
+  "lon": 9.47207
+ },
+ {
+  "name": "Likouala-Moussaka",
+  "kind": "quartier",
+  "lat": 0.39025,
+  "lon": 9.45617
+ },
+ {
+  "name": "London",
+  "kind": "quartier",
+  "lat": 0.38383,
+  "lon": 9.45384
+ },
+ {
+  "name": "Louis",
+  "kind": "quartier",
+  "lat": 0.4106,
+  "lon": 9.43283
+ },
+ {
+  "name": "Lycée Technique",
+  "kind": "quartier",
+  "lat": 0.32496,
+  "lon": 9.50979
+ },
+ {
+  "name": "Michel Marine",
+  "kind": "quartier",
+  "lat": 0.36831,
+  "lon": 9.45792
+ },
+ {
+  "name": "Mikolongo",
+  "kind": "quartier",
+  "lat": 0.47655,
+  "lon": 9.42065
+ },
+ {
+  "name": "Mindoube 1",
+  "kind": "quartier",
+  "lat": 0.37286,
+  "lon": 9.49242
+ },
+ {
+  "name": "Mindoubé 2",
+  "kind": "quartier",
+  "lat": 0.38173,
+  "lon": 9.49419
+ },
+ {
+  "name": "Mindoubé 3",
+  "kind": "quartier",
+  "lat": 0.3849,
+  "lon": 9.50143
+ },
+ {
+  "name": "Mont Bouet",
+  "kind": "quartier",
+  "lat": 0.40174,
+  "lon": 9.44932
+ },
+ {
+  "name": "Montagne Sainte",
+  "kind": "quartier",
+  "lat": 0.39691,
+  "lon": 9.44395
+ },
+ {
+  "name": "Montalier",
+  "kind": "quartier",
+  "lat": 0.43278,
+  "lon": 9.50453
+ },
+ {
+  "name": "N'kembo",
+  "kind": "quartier",
+  "lat": 0.4098,
+  "lon": 9.45479
+ },
+ {
+  "name": "Nomba-Domaine",
+  "kind": "quartier",
+  "lat": 0.33615,
+  "lon": 9.49549
+ },
+ {
+  "name": "Nombakele",
+  "kind": "quartier",
+  "lat": 0.38708,
+  "lon": 9.44784
+ },
+ {
+  "name": "Nzeng Ayong",
+  "kind": "quartier",
+  "lat": 0.42712,
+  "lon": 9.48222
+ },
+ {
+  "name": "Okala",
+  "kind": "quartier",
+  "lat": 0.48692,
+  "lon": 9.40942
+ },
+ {
+  "name": "Oloumi",
+  "kind": "quartier",
+  "lat": 0.37091,
+  "lon": 9.45744
+ },
+ {
+  "name": "Ondogo",
+  "kind": "quartier",
+  "lat": 0.44693,
+  "lon": 9.46449
+ },
+ {
+  "name": "Owendo Port",
+  "kind": "quartier",
+  "lat": 0.29654,
+  "lon": 9.49789
+ },
+ {
+  "name": "Ozangué",
+  "kind": "quartier",
+  "lat": 0.37722,
+  "lon": 9.47972
+ },
+ {
+  "name": "Ozoungué",
+  "kind": "quartier",
+  "lat": 0.3529,
+  "lon": 9.47752
+ },
+ {
+  "name": "Petit Paris",
+  "kind": "quartier",
+  "lat": 0.39663,
+  "lon": 9.45014
+ },
+ {
+  "name": "Peyrie",
+  "kind": "quartier",
+  "lat": 0.40132,
+  "lon": 9.45901
+ },
+ {
+  "name": "PK 10",
+  "kind": "quartier",
+  "lat": 0.39313,
+  "lon": 9.50721
+ },
+ {
+  "name": "PK5",
+  "kind": "quartier",
+  "lat": 0.40656,
+  "lon": 9.46772
+ },
+ {
+  "name": "Plaine Niger",
+  "kind": "quartier",
+  "lat": 0.37625,
+  "lon": 9.46128
+ },
+ {
+  "name": "Plaine Orety",
+  "kind": "quartier",
+  "lat": 0.41399,
+  "lon": 9.43712
+ },
+ {
+  "name": "Plein-ciel",
+  "kind": "quartier",
+  "lat": 0.39738,
+  "lon": 9.47584
+ },
+ {
+  "name": "Pont-Nomba",
+  "kind": "quartier",
+  "lat": 0.33908,
+  "lon": 9.47685
+ },
+ {
+  "name": "Première Cité",
+  "kind": "quartier",
+  "lat": 0.49766,
+  "lon": 9.40239
+ },
+ {
+  "name": "Quaben",
+  "kind": "quartier",
+  "lat": 0.41216,
+  "lon": 9.43066
+ },
+ {
+  "name": "Razel",
+  "kind": "quartier",
+  "lat": 0.33363,
+  "lon": 9.48065
+ },
+ {
+  "name": "S.E.E.G-Jean Violas",
+  "kind": "quartier",
+  "lat": 0.35889,
+  "lon": 9.50069
+ },
+ {
+  "name": "Sablière",
+  "kind": "quartier",
+  "lat": 0.48608,
+  "lon": 9.39161
+ },
+ {
+  "name": "Setrag",
+  "kind": "quartier",
+  "lat": 0.32945,
+  "lon": 9.49338
+ },
+ {
+  "name": "Sibang",
+  "kind": "quartier",
+  "lat": 0.41239,
+  "lon": 9.4945
+ },
+ {
+  "name": "Smag",
+  "kind": "quartier",
+  "lat": 0.35913,
+  "lon": 9.47538
+ },
+ {
+  "name": "Sorbonne",
+  "kind": "quartier",
+  "lat": 0.40387,
+  "lon": 9.45481
+ },
+ {
+  "name": "Sotega",
+  "kind": "quartier",
+  "lat": 0.42021,
+  "lon": 9.45654
+ },
+ {
+  "name": "STFO",
+  "kind": "quartier",
+  "lat": 0.40589,
+  "lon": 9.45909,
+  "aliases": [
+   "Société Technique de la Forêt d'Okoumé"
+  ]
+ },
+ {
+  "name": "Tahiti",
+  "kind": "quartier",
+  "lat": 0.44848,
+  "lon": 9.41337
+ },
+ {
+  "name": "Terre-Nouvelle",
+  "kind": "quartier",
+  "lat": 0.40239,
+  "lon": 9.47978
+ },
+ {
+  "name": "Toulon",
+  "kind": "quartier",
+  "lat": 0.38075,
+  "lon": 9.45638
+ },
+ {
+  "name": "Trois quartiers",
+  "kind": "quartier",
+  "lat": 0.42442,
+  "lon": 9.42874
+ },
+ {
+  "name": "Vallée Sainte-Marie",
+  "kind": "quartier",
+  "lat": 0.40403,
+  "lon": 9.44011
+ },
+ {
+  "name": "Venez-Voir",
+  "kind": "quartier",
+  "lat": 0.40343,
+  "lon": 9.46231
+ },
+ {
+  "name": "Zone Industrielle d'Oloumi",
+  "kind": "quartier",
+  "lat": 0.37977,
+  "lon": 9.46766
+ },
+ {
+  "name": "Aboumi",
+  "kind": "ville",
+  "lat": -0.65817,
+  "lon": 14.13728
+ },
+ {
+  "name": "Akam Essatouk",
+  "kind": "ville",
+  "lat": 1.80677,
+  "lon": 11.42608
+ },
+ {
+  "name": "Akanda",
+  "kind": "ville",
+  "lat": 0.51642,
+  "lon": 9.38822
+ },
+ {
+  "name": "Akiéni",
+  "kind": "ville",
+  "lat": -1.1726,
+  "lon": 13.87529
+ },
+ {
+  "name": "Bakoumba",
+  "kind": "ville",
+  "lat": -1.82573,
+  "lon": 13.01024
+ },
+ {
+  "name": "Bifoun",
+  "kind": "ville",
+  "lat": -0.25135,
+  "lon": 10.4148
+ },
+ {
+  "name": "Bitam",
+  "kind": "ville",
+  "lat": 2.07864,
+  "lon": 11.49444
+ },
+ {
+  "name": "Bongoville",
+  "kind": "ville",
+  "lat": -1.64575,
+  "lon": 13.86001
+ },
+ {
+  "name": "Booué",
+  "kind": "ville",
+  "lat": -0.10157,
+  "lon": 11.94815
+ },
+ {
+  "name": "Boumango",
+  "kind": "ville",
+  "lat": -2.22669,
+  "lon": 13.61353
+ },
+ {
+  "name": "Cocobeach",
+  "kind": "ville",
+  "lat": 1.00557,
+  "lon": 9.58421
+ },
+ {
+  "name": "Fougamou",
+  "kind": "ville",
+  "lat": -1.21647,
+  "lon": 10.59137
+ },
+ {
+  "name": "Franceville",
+  "kind": "ville",
+  "lat": -1.6344,
+  "lon": 13.58948
+ },
+ {
+  "name": "Gamba",
+  "kind": "ville",
+  "lat": -2.72013,
+  "lon": 10.01894
+ },
+ {
+  "name": "Guiétsou",
+  "kind": "ville",
+  "lat": -2.18851,
+  "lon": 10.66839
+ },
+ {
+  "name": "Iboundji",
+  "kind": "ville",
+  "lat": -1.21999,
+  "lon": 11.82152
+ },
+ {
+  "name": "Kango",
+  "kind": "ville",
+  "lat": 0.19098,
+  "lon": 10.08696
+ },
+ {
+  "name": "Koulamoutou",
+  "kind": "ville",
+  "lat": -1.13411,
+  "lon": 12.4673
+ },
+ {
+  "name": "Lambaréné",
+  "kind": "ville",
+  "lat": -0.69426,
+  "lon": 10.22365
+ },
+ {
+  "name": "Lastoursville",
+  "kind": "ville",
+  "lat": -0.81044,
+  "lon": 12.73038
+ },
+ {
+  "name": "Lébamba",
+  "kind": "ville",
+  "lat": -2.21248,
+  "lon": 11.47056
+ },
+ {
+  "name": "Lékoni",
+  "kind": "ville",
+  "lat": -1.58465,
+  "lon": 14.26508
+ },
+ {
+  "name": "Libreville",
+  "kind": "ville",
+  "lat": 0.40865,
+  "lon": 9.44188
+ },
+ {
+  "name": "Mabanda",
+  "kind": "ville",
+  "lat": -2.82701,
+  "lon": 11.53
+ },
+ {
+  "name": "Makokou",
+  "kind": "ville",
+  "lat": 0.56191,
+  "lon": 12.8525
+ },
+ {
+  "name": "Malinga",
+  "kind": "ville",
+  "lat": -2.45523,
+  "lon": 12.16701
+ },
+ {
+  "name": "Mandji",
+  "kind": "ville",
+  "lat": -1.7058,
+  "lon": 10.38865
+ },
+ {
+  "name": "Mayumba",
+  "kind": "ville",
+  "lat": -3.43157,
+  "lon": 10.65457
+ },
+ {
+  "name": "Mbigou",
+  "kind": "ville",
+  "lat": -1.89612,
+  "lon": 11.90955
+ },
+ {
+  "name": "Medouneu",
+  "kind": "ville",
+  "lat": 1.01805,
+  "lon": 10.79617
+ },
+ {
+  "name": "Mékambo",
+  "kind": "ville",
+  "lat": 1.01498,
+  "lon": 13.95646
+ },
+ {
+  "name": "Mimongo",
+  "kind": "ville",
+  "lat": -1.62516,
+  "lon": 11.60037
+ },
+ {
+  "name": "Minvoul",
+  "kind": "ville",
+  "lat": 2.15226,
+  "lon": 12.13322
+ },
+ {
+  "name": "Mitzic",
+  "kind": "ville",
+  "lat": 0.7826,
+  "lon": 11.54859
+ },
+ {
+  "name": "Moabi",
+  "kind": "ville",
+  "lat": -2.44517,
+  "lon": 10.92395
+ },
+ {
+  "name": "Moanda",
+  "kind": "ville",
+  "lat": -1.55476,
+  "lon": 13.2219
+ },
+ {
+  "name": "Mouila",
+  "kind": "ville",
+  "lat": -1.8627,
+  "lon": 11.05871
+ },
+ {
+  "name": "Mounana",
+  "kind": "ville",
+  "lat": -1.38331,
+  "lon": 13.15651
+ },
+ {
+  "name": "Ndendé",
+  "kind": "ville",
+  "lat": -2.39628,
+  "lon": 11.35808
+ },
+ {
+  "name": "Ndjolé",
+  "kind": "ville",
+  "lat": -0.18381,
+  "lon": 10.76583
+ },
+ {
+  "name": "Ndougou",
+  "kind": "ville",
+  "lat": -1.65416,
+  "lon": 9.66627
+ },
+ {
+  "name": "Ndzomoe",
+  "kind": "ville",
+  "lat": -0.0697,
+  "lon": 9.43423
+ },
+ {
+  "name": "Ngouoni",
+  "kind": "ville",
+  "lat": -1.49633,
+  "lon": 13.79224
+ },
+ {
+  "name": "Ntoum",
+  "kind": "ville",
+  "lat": 0.39132,
+  "lon": 9.75887
+ },
+ {
+  "name": "Nzenzélé",
+  "kind": "ville",
+  "lat": -2.25179,
+  "lon": 11.70657
+ },
+ {
+  "name": "Okondja",
+  "kind": "ville",
+  "lat": -0.6532,
+  "lon": 13.67928
+ },
+ {
+  "name": "Omboué",
+  "kind": "ville",
+  "lat": -1.57443,
+  "lon": 9.2606
+ },
+ {
+  "name": "Owendo",
+  "kind": "ville",
+  "lat": 0.32082,
+  "lon": 9.49527
+ },
+ {
+  "name": "Oyem",
+  "kind": "ville",
+  "lat": 1.59979,
+  "lon": 11.5751
+ },
+ {
+  "name": "Popa",
+  "kind": "ville",
+  "lat": -1.60256,
+  "lon": 12.3046
+ },
+ {
+  "name": "Port-Gentil",
+  "kind": "ville",
+  "lat": -0.7152,
+  "lon": 8.77879
+ },
+ {
+  "name": "Sindara",
+  "kind": "ville",
+  "lat": -1.03948,
+  "lon": 10.66145
+ },
+ {
+  "name": "Tchibanga",
+  "kind": "ville",
+  "lat": -2.9171,
+  "lon": 10.9956
+ }
+]

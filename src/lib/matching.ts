@@ -1,5 +1,6 @@
 import type { Annonce, ClientDemand } from "@/types/database";
 import { normalizeText } from "./extraction";
+import { DEFAULT_RADIUS_KM, distanceKm, locateAnnonce, locatePlace, type GeoPoint } from "./geo";
 
 // Matching abonné ↔ annonce, entièrement déterministe : l'IA n'intervient pas ici.
 //  1. critères bloquants : une contradiction écarte l'annonce ;
@@ -47,6 +48,22 @@ function hasTag(annonce: Annonce, needle: string): boolean {
   return (annonce.ai_tags || []).some((t) => normalizeText(t).includes(needle));
 }
 
+/**
+ * Points autour desquels l'abonné cherche : son adresse précise si elle est renseignée
+ * (geo_lat / geo_lon), sinon le centre de chacun de ses quartiers préférés.
+ */
+function demandCenters(demand: ClientDemand): GeoPoint[] {
+  if (typeof demand.geo_lat === "number" && typeof demand.geo_lon === "number") {
+    return [{ lat: demand.geo_lat, lon: demand.geo_lon, lieu: "adresse souhaitée", precision: "quartier" }];
+  }
+  const centers: GeoPoint[] = [];
+  for (const name of demand.filter_quartiers || []) {
+    const point = locatePlace(name, ["quartier", "localite"]);
+    if (point) centers.push(point);
+  }
+  return centers;
+}
+
 /** Préférences souples de l'abonné : colonnes dédiées, complétées par le texte libre « exigences ». */
 export function demandPreferences(demand: ClientDemand) {
   const exigences = normalizeText(demand.exigences || "");
@@ -55,6 +72,8 @@ export function demandPreferences(demand: ClientDemand) {
 
   return {
     quartiers: (demand.filter_quartiers || []).map(normalizeText).filter(Boolean),
+    centers: demandCenters(demand),
+    radiusKm: demand.geo_radius_km && demand.geo_radius_km > 0 ? Number(demand.geo_radius_km) : DEFAULT_RADIUS_KM,
     meuble: wants(demand.filter_meuble, "meubl"),
     climatise: wants(demand.filter_climatise, "climatis"),
     parking: wants(demand.filter_parking, "parking"),
@@ -123,10 +142,31 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
     reasons.push(`${label} : ${value === 1 ? "oui" : value === 0 ? "non" : "inconnu"}`);
   };
 
-  if (prefs.quartiers.length) {
+  if (prefs.quartiers.length || prefs.centers.length) {
     const quartier = annonce.quartier ? normalizeText(annonce.quartier) : "";
-    const value = !quartier ? UNKNOWN : prefs.quartiers.some((q) => quartier.includes(q) || q.includes(quartier)) ? 1 : 0;
-    add(WEIGHTS.quartier, value, "quartier préféré");
+    const sameName = !!quartier && prefs.quartiers.some((q) => quartier.includes(q) || q.includes(quartier));
+
+    // WHY: un même endroit porte plusieurs noms. Quand l'annonce et la recherche sont
+    // localisées, on compare une distance plutôt que des noms ; sinon on retombe sur le nom.
+    const point = locateAnnonce(annonce as unknown as Parameters<typeof locateAnnonce>[0]);
+    const located = point && point.precision !== "ville" ? point : null;
+    let nearest: { km: number; lieu: string } | null = null;
+    if (located) {
+      for (const center of prefs.centers) {
+        const km = distanceKm(located, center);
+        if (!nearest || km < nearest.km) nearest = { km, lieu: center.lieu };
+      }
+    }
+
+    if (nearest) {
+      const inside = nearest.km <= prefs.radiusKm || sameName;
+      weightSum += WEIGHTS.quartier;
+      earned += inside ? WEIGHTS.quartier : 0;
+      reasons.push(`à ${nearest.km.toFixed(1)} km de ${nearest.lieu} (rayon ${prefs.radiusKm} km) : ${inside ? "oui" : "non"}`);
+    } else {
+      const value = !quartier ? UNKNOWN : sameName ? 1 : 0;
+      add(WEIGHTS.quartier, value, "quartier préféré");
+    }
   }
   if (prefs.meuble !== null) add(WEIGHTS.meuble, boolScore(prefs.meuble, annonce.meuble), "meublé");
 

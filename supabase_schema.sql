@@ -574,3 +574,13 @@ EXCEPTION WHEN unique_violation THEN
     -- Des doublons existent déjà : l'index n'est pas créé, le reste du script continue.
     RAISE NOTICE 'uq_client_demand_sends_key non créé : doublons existants dans client_demand_sends';
 END $$;
+
+-- ============================================================
+-- MATCHING PAR RAYON (rejouable)
+-- Sans ces colonnes, le rayon est de 5 km autour du centre des quartiers préférés.
+-- ============================================================
+-- Point précis autour duquel l'abonné cherche (facultatif)
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_lat NUMERIC;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_lon NUMERIC;
+-- Rayon de recherche, en kilomètres
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS geo_radius_km NUMERIC DEFAULT 5;

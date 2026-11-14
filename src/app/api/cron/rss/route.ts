@@ -64,7 +64,7 @@ async function handleCron(request: Request) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
-  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
   for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
     const handle = t.tiktok_handle.replace(/^@/, "").toLowerCase();
     addSource(`tiktok:${handle}`, { id: t.id, userId: t.user_id, name: `@${handle}`, aiKey: t.profiles?.kimi_api_key ?? null });
@@ -161,6 +161,10 @@ async function handleCron(request: Request) {
           legacyAiKey: source.aiKey,
           onFirstSeen: () => {
             if (!oldestChecked) oldestWasNew = true;
+          },
+          onNewAnnonce: ({ located }) => {
+            if (located) stats.located++;
+            else stats.unlocated++;
           },
           onAiError: (message) => {
             const key = message.slice(0, 220);

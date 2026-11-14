@@ -125,6 +125,14 @@ publication.
 - **RapidAPI** : la collecte manuelle est desactivee et ses boutons masques. Pour la reactiver, definir
   `NEXT_PUBLIC_RAPIDAPI_COLLECT=true` et redeployer.
 
+- **Localisation** (`src/lib/geo.ts`) : chaque annonce est placee sur un referentiel de lieux du Gabon
+  (`src/data/gabon-places.json` : 109 quartiers et 29 localites de la zone de Libreville, 53 villes),
+  tolerant aux variantes d'ecriture et aux fautes de frappe. Le quartier reconnu prend son nom officiel.
+  Donnees © les contributeurs d'OpenStreetMap, licence ODbL.
+- **Matching par rayon** : la preference de quartier compare une distance, pas un nom. Par defaut, 5 km
+  autour du centre de chaque quartier prefere ; reglable par abonne (`geo_radius_km`), ou autour d'un
+  point precis (`geo_lat`, `geo_lon`). Une annonce non localisable est comparee par son nom, comme avant.
+
 Tests : `npm test` (Vitest).
 
 ## Deploiement sur Railway

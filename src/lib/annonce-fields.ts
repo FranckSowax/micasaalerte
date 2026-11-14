@@ -1,4 +1,5 @@
 import type { AIExtractionResult } from "./ai";
+import { locateAnnonce } from "./geo";
 import type { createServiceClient } from "./supabase/server";
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -50,5 +51,15 @@ export async function annonceFieldsFromAnalysis(client: ServiceClient, analysis:
     ai_tags: analysis.tags || [],
   };
 
-  return (await hasDetailsColumn(client)) ? { ...fields, details: analysis.details } : fields;
+  // Localisation sur le référentiel de lieux : coordonnées pour le matching par rayon et la carte.
+  const geo = locateAnnonce({ quartier: fields.quartier, adresse_complete: fields.adresse_complete, ville: fields.ville });
+  // Le quartier reconnu prend son nom officiel (« angondje entraco » → « Angondjé ») ; l'écriture d'origine est conservée.
+  const quartier = geo && geo.precision !== "ville" ? geo.lieu : fields.quartier;
+  const located = { ...fields, quartier };
+
+  if (!(await hasDetailsColumn(client))) return located;
+  return {
+    ...located,
+    details: { ...analysis.details, geo, ...(quartier !== fields.quartier ? { quartier_texte: fields.quartier } : {}) },
+  };
 }

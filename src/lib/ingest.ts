@@ -42,6 +42,8 @@ export interface IngestInput {
   onAiError?: (message: string) => void;
   /** Appelé quand la publication est rencontrée pour la toute première fois. */
   onFirstSeen?: () => void;
+  /** Appelé à la création d'une annonce : indique si elle a pu être placée sur la carte. */
+  onNewAnnonce?: (info: { located: boolean }) => void;
 }
 
 const MAX_CANDIDATES = 1000;
@@ -281,6 +283,10 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
       return "duplicate";
     }
 
+    const fields = await annonceFieldsFromAnalysis(client, analysis);
+    const geo = (fields as { details?: { geo?: unknown } }).details?.geo;
+    input.onNewAnnonce?.({ located: !!geo });
+
     const { data: annonce } = await client
       .from("annonces")
       .insert({
@@ -293,7 +299,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
         fb_posted_at: input.publishedAt,
         raw_text: input.text,
         raw_images: input.images,
-        ...(await annonceFieldsFromAnalysis(client, analysis)),
+        ...fields,
       })
       .select("id")
       .single();

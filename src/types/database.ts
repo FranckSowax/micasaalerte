@@ -372,6 +372,11 @@ export interface ClientDemand {
   filter_surface_min?: number | null;
   keywords_include?: string[] | null;
   keywords_exclude?: string[] | null;
+  /** Point précis autour duquel chercher ; à défaut, le centre des quartiers préférés est utilisé. */
+  geo_lat?: number | null;
+  geo_lon?: number | null;
+  /** Rayon de recherche en kilomètres (5 par défaut). */
+  geo_radius_km?: number | null;
   /** Score minimal (0-100) pour un envoi automatique. */
   min_score?: number | null;
   alert_mode?: "immediate" | "digest" | null;
