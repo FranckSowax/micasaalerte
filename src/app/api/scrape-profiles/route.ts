@@ -3,6 +3,7 @@ import { analyzePost } from "@/lib/ai";
 import { annonceFieldsFromAnalysis } from "@/lib/annonce-fields";
 import { extractImages, fetchReshareImages } from "@/lib/extract-images";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
+import { RAPIDAPI_COLLECT_ENABLED, RAPIDAPI_DISABLED_MESSAGE } from "@/lib/features";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 120;
@@ -11,6 +12,9 @@ export async function POST(request: Request) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!RAPIDAPI_COLLECT_ENABLED) {
+    return NextResponse.json({ error: RAPIDAPI_DISABLED_MESSAGE }, { status: 410 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const specificAgentId = body.agentId as string | undefined;

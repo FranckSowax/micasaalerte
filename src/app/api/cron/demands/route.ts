@@ -27,6 +27,11 @@ export const POST = handleCron;
 const RECENT_ANNONCES = 100;
 const DIGEST_MAX_ITEMS = 5;
 
+function versionOf(annonce: Annonce): number {
+  const details = (annonce as unknown as { details?: { version?: unknown } }).details;
+  return typeof details?.version === "number" ? details.version : 1;
+}
+
 async function handleCron(request: Request) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
@@ -77,18 +82,20 @@ async function handleCron(request: Request) {
 
       const { data: sends } = await supabase
         .from("client_demand_sends")
-        .select("annonce_id, sent_at, status")
+        .select("*")
         .eq("demand_id", demand.id);
 
       // Clé d'unicité abonné + annonce : une annonce déjà tentée n'est jamais renvoyée.
-      const alreadySent = new Set((sends || []).map((s) => s.annonce_id as string));
+      // Clé d'unicité abonné + annonce + version : une annonce dont le prix a changé (nouvelle
+      // version) peut être renvoyée une fois, jamais deux fois la même version.
+      const alreadySent = new Set((sends || []).map((s) => `${s.annonce_id}:${s.annonce_version ?? 1}`));
       const sentToday = (sends || []).filter(
         (s) => s.status !== "failed" && typeof s.sent_at === "string" && s.sent_at >= dayStart
       ).length;
 
       const candidates: { annonce: Annonce; score: number }[] = [];
       for (const annonce of annonces) {
-        if (alreadySent.has(annonce.id)) continue;
+        if (alreadySent.has(`${annonce.id}:${versionOf(annonce)}`)) continue;
         const match = matchDemand(annonce, demand);
         if (!match.eligible) continue;
         if (match.needsReview) {
@@ -100,20 +107,26 @@ async function handleCron(request: Request) {
       if (!candidates.length) continue;
       candidates.sort((a, b) => b.score - a.score);
 
-      const record = (annonceId: string, messageId: string | undefined, success: boolean) =>
-        supabase.from("client_demand_sends").insert({
+      const record = async (annonce: Annonce, messageId: string | undefined, success: boolean) => {
+        const row = {
           demand_id: demand.id,
-          annonce_id: annonceId,
+          annonce_id: annonce.id,
           message_id: messageId || null,
           status: success ? "sent" : "failed",
-        });
+        };
+        const version = versionOf(annonce);
+        if (version === 1) return supabase.from("client_demand_sends").insert(row);
+        const { error } = await supabase.from("client_demand_sends").insert({ ...row, annonce_version: version });
+        // Base sans la colonne annonce_version : on enregistre quand même l'envoi.
+        if (error) await supabase.from("client_demand_sends").insert(row);
+      };
 
       if (demand.alert_mode === "digest") {
         // Résumé périodique : un seul message par jour, regroupant les meilleures annonces.
         if (sentToday > 0) continue;
         const picked = candidates.slice(0, DIGEST_MAX_ITEMS).map((c) => c.annonce);
         const result = await sendWhatsAppMessage(demand.client_phone, formatDigestMessage(picked));
-        for (const annonce of picked) await record(annonce.id, result.messageId, result.success);
+        for (const annonce of picked) await record(annonce, result.messageId, result.success);
         if (result.success) {
           stats.digests++;
           stats.totalSent += picked.length;
@@ -129,7 +142,7 @@ async function handleCron(request: Request) {
 
       for (const { annonce } of candidates.slice(0, remaining)) {
         const result = await sendWhatsAppMessage(demand.client_phone, formatAnnonceMessage(annonce));
-        await record(annonce.id, result.messageId, result.success);
+        await record(annonce, result.messageId, result.success);
         if (result.success) stats.totalSent++;
         else stats.failed++;
         await sleep(500); // Avoid WhatsApp rate limits

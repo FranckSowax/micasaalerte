@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Square } from "lucide-react";
+import { RAPIDAPI_COLLECT_ENABLED } from "@/lib/features";
 import { formatDate } from "@/lib/utils";
 import type { FacebookGroup } from "@/types/database";
 
@@ -218,20 +219,22 @@ export default function GroupesPage() {
           <h1 className="text-3xl font-bold">Groupes Facebook</h1>
           <p className="text-muted-foreground mt-1">Gérez les groupes à surveiller</p>
         </div>
-        <div className="flex gap-2">
-          {scraping && (
-            <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-              <Square className="h-4 w-4 mr-2" /> Arrêter
-            </Button>
-          )}
-          <Button onClick={() => handleScrape()} disabled={!!scraping}>
-            {scraping ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
-            ) : (
-              <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+        {RAPIDAPI_COLLECT_ENABLED && (
+          <div className="flex gap-2">
+            {scraping && (
+              <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+                <Square className="h-4 w-4 mr-2" /> Arrêter
+              </Button>
             )}
-          </Button>
-        </div>
+            <Button onClick={() => handleScrape()} disabled={!!scraping}>
+              {scraping ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
+              ) : (
+                <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -356,9 +359,11 @@ export default function GroupesPage() {
                   <Button variant="ghost" size="sm" onClick={() => handleToggle(group.id, group.is_active)}>
                     {group.is_active ? "Désactiver" : "Activer"}
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleScrape(group.id)} disabled={!!scraping}>
-                    {scraping === group.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  </Button>
+                  {RAPIDAPI_COLLECT_ENABLED && (
+                    <Button variant="ghost" size="icon" onClick={() => handleScrape(group.id)} disabled={!!scraping}>
+                      {scraping === group.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(group.id)} className="text-destructive hover:text-destructive">
                     <Trash2 className="h-4 w-4" />
                   </Button>

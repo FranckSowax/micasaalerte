@@ -3,6 +3,7 @@ import { analyzePost, isAIConfigured } from "@/lib/ai";
 import { annonceFieldsFromAnalysis } from "@/lib/annonce-fields";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { RAPIDAPI_COLLECT_ENABLED, RAPIDAPI_DISABLED_MESSAGE } from "@/lib/features";
 import { NextResponse } from "next/server";
 
 // Appelée en POST par scripts/run-cron.mjs (service cron Railway) ; GET accepté aussi pour un déclenchement manuel.
@@ -13,6 +14,9 @@ export const POST = handleCron;
 async function handleCron(request: Request) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+  if (!RAPIDAPI_COLLECT_ENABLED) {
+    return NextResponse.json({ error: RAPIDAPI_DISABLED_MESSAGE }, { status: 410 });
   }
 
   const serviceClient = createServiceClient();

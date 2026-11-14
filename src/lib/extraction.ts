@@ -29,7 +29,9 @@ Champs :
   (ex. Abidjan, Douala, Dakar au Sénégal). Attention : Libreville a des quartiers nommés Dakar, London,
   Petit Paris, Plaine Niger, Toulon — ce ne sont pas des lieux étrangers. Dans le doute, false.
 - transaction : "location" | "location_meublee" | "vente" | "colocation" | "recherche" | "inconnu"
-  ("recherche" = l'auteur CHERCHE un bien ; "inconnu" si ce n'est pas dit)
+  ("recherche" = l'auteur CHERCHE un bien à louer ou à acheter, ex. « je cherche un studio »,
+  « besoin d'une chambre », « qui a un appartement à louer ? » : ce n'est pas une offre ;
+  "inconnu" si ce n'est pas dit)
 - type : "appartement" | "maison" | "villa" | "studio" | "chambre" | "terrain" | "bureau" | "commerce" | null
 - prix (nombre, "150k" = 150000, "1M" = 1000000) | null
 - devise ("XAF" par défaut si un prix est donné) | null
@@ -153,7 +155,8 @@ const SEUIL_CONFIANCE = 0.5;
 export function normalizeText(value: string): string {
   return value
     .toLowerCase()
-    .normalize("NFD")
+    // NFKD : décompose les accents ET ramène les lettres « stylées » (𝗔, 𝟯…) à leur forme simple.
+    .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -273,6 +276,16 @@ export function sanitizeExtraction(raw: unknown, source: string): Extraction {
     rejets,
     a_verifier: aVerifier,
   };
+}
+
+/**
+ * Une publication ne devient une annonce que si c'est une OFFRE immobilière située au Gabon.
+ * Les demandes (« je cherche un studio… ») et les biens à l'étranger sont écartés.
+ *
+ * @example if (isListing(fiche)) creerAnnonce(fiche);
+ */
+export function isListing(e: Pick<Extraction, "est_immobilier" | "hors_gabon" | "transaction">): boolean {
+  return e.est_immobilier && !e.hors_gabon && e.transaction !== "recherche";
 }
 
 /** Détails rangés dans `annonces.details` (JSON) : tout ce qui n'a pas de colonne dédiée. */

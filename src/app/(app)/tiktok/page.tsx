@@ -10,6 +10,7 @@ import {
   Plus, Trash2, Play, Loader2, CheckCircle2, AlertCircle,
   ChevronDown, ChevronUp, Video, Square,
 } from "lucide-react";
+import { RAPIDAPI_COLLECT_ENABLED } from "@/lib/features";
 import { formatDate } from "@/lib/utils";
 import type { TikTokAccount } from "@/types/database";
 
@@ -190,20 +191,22 @@ export default function TikTokPage() {
           <h1 className="text-3xl font-bold">TikTok</h1>
           <p className="text-muted-foreground mt-1">Scrapez les vidéos immobilières de comptes TikTok</p>
         </div>
-        <div className="flex gap-2">
-          {scraping && (
-            <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-              <Square className="h-4 w-4 mr-2" /> Arrêter
-            </Button>
-          )}
-          <Button onClick={() => handleScrape()} disabled={!!scraping}>
-            {scraping ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
-            ) : (
-              <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+        {RAPIDAPI_COLLECT_ENABLED && (
+          <div className="flex gap-2">
+            {scraping && (
+              <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+                <Square className="h-4 w-4 mr-2" /> Arrêter
+              </Button>
             )}
-          </Button>
-        </div>
+            <Button onClick={() => handleScrape()} disabled={!!scraping}>
+              {scraping ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Collecte...</>
+              ) : (
+                <><Play className="h-4 w-4 mr-2" /> Collecter tout</>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Progress */}
@@ -318,9 +321,11 @@ export default function TikTokPage() {
                   <Button variant="ghost" size="sm" onClick={() => handleToggle(acc.id, acc.is_active)}>
                     {acc.is_active ? "Désactiver" : "Activer"}
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleScrape(acc.id)} disabled={!!scraping}>
-                    {scraping === acc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  </Button>
+                  {RAPIDAPI_COLLECT_ENABLED && (
+                    <Button variant="ghost" size="icon" onClick={() => handleScrape(acc.id)} disabled={!!scraping}>
+                      {scraping === acc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(acc.id)} className="text-destructive hover:text-destructive">
                     <Trash2 className="h-4 w-4" />
                   </Button>

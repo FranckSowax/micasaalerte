@@ -22,6 +22,12 @@ const TYPE_BIEN_OPTIONS = ["appartement", "maison", "studio", "chambre", "terrai
 const STATUS_OPTIONS = ["new", "sent", "archived", "favorite"];
 const STATUS_LABELS: Record<string, string> = { new: "Nouveau", sent: "Envoyé", archived: "Archivé", favorite: "Favori" };
 
+// Nombre de diffusions de l'annonce (republications et relais rattachés par l'anti-doublons).
+function diffusionsOf(annonce: Annonce): number {
+  const details = (annonce as unknown as { details?: { diffusions?: unknown } }).details;
+  return typeof details?.diffusions === "number" ? details.diffusions : 1;
+}
+
 type SortKey = "published_desc" | "published_asc" | "collected_desc" | "price_asc" | "price_desc";
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -74,7 +80,9 @@ export default function AnnoncesPage() {
 
     if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
     if (filters.type_bien) query = query.eq("type_bien", filters.type_bien);
+    // Les annonces archivées (dont les doublons fusionnés) ne s'affichent que si on les demande.
     if (filters.status) query = query.eq("status", filters.status);
+    else query = query.neq("status", "archived");
     if (filters.prix_min) query = query.gte("prix", Number(filters.prix_min));
     if (filters.prix_max) query = query.lte("prix", Number(filters.prix_max));
     if (filters.quartier) query = query.ilike("quartier", `%${filters.quartier}%`);
@@ -393,6 +401,7 @@ export default function AnnoncesPage() {
                     <div className="text-xs text-muted-foreground">
                       <span>{formatDate(annonce.fb_posted_at || annonce.created_at)}</span>
                       {annonce.fb_author_name && <span className="ml-1">| {annonce.fb_author_name}</span>}
+                      {diffusionsOf(annonce) > 1 && <span className="ml-1">| diffusée {diffusionsOf(annonce)} fois</span>}
                     </div>
                     <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => updateStatus(annonce.id, annonce.status === "favorite" ? "new" : "favorite")}>

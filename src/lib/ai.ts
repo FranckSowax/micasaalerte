@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   EXTRACTION_PROMPT,
+  isListing,
   sanitizeExtraction,
   toAnnonceDetails,
   toTags,
@@ -118,7 +119,8 @@ function globalConfidence(e: Extraction): number {
  * Les contacts viennent d'expressions régulières, jamais du modèle ; tout champ
  * important non justifié par un extrait de la source est remis à null.
  *
- * Un bien situé hors du Gabon est écarté (`is_real_estate` à false, `details.hors_gabon` à true).
+ * Un bien situé hors du Gabon est écarté (`is_real_estate` à false, `details.hors_gabon` à true),
+ * tout comme une publication où l'auteur cherche un bien (`details.transaction` à "recherche").
  * @example
  * const fiche = await analyzePost("Studio meublé 150k à Okala, 077 12 34 56");
  */
@@ -149,8 +151,8 @@ export async function analyzePost(text: string, apiKey?: string | null): Promise
   const e = sanitizeExtraction(JSON.parse(extractJson(content)), text);
 
   return {
-    // Périmètre actuel : Gabon uniquement.
-    is_real_estate: e.est_immobilier && !e.hors_gabon,
+    // Périmètre actuel : offres situées au Gabon ; les recherches de biens sont exclues.
+    is_real_estate: isListing(e),
     type_offre: toTypeOffre(e.transaction),
     type_bien: e.type,
     prix: e.prix,

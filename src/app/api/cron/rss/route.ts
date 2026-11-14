@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { isAIConfigured } from "@/lib/ai";
 import { isAuthorizedCron } from "@/lib/cron-auth";
-import { ingestPost, reprocessPending } from "@/lib/ingest";
+import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending } from "@/lib/ingest";
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
@@ -64,7 +64,7 @@ async function handleCron(request: Request) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
-  const stats = { posts: 0, newAnnonces: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, notRealEstate: 0, outOfArea: 0, known: 0, aiErrors: 0, empty: 0, deferred: 0 };
   for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
     const handle = t.tiktok_handle.replace(/^@/, "").toLowerCase();
     addSource(`tiktok:${handle}`, { id: t.id, userId: t.user_id, name: `@${handle}`, aiKey: t.profiles?.kimi_api_key ?? null });
@@ -78,6 +78,13 @@ async function handleCron(request: Request) {
   // Messages d'erreur distincts de l'IA, avec leur nombre : sans eux un échec en série est illisible.
   const aiErrorMessages: Record<string, number> = {};
   let analyses = 0;
+
+  // Dédoublonnage : on commence par fusionner les doublons déjà en base, puis chaque
+  // nouvelle publication est comparée aux annonces récentes de son compte.
+  const dedupe = new DedupeIndex();
+  const accountIds = new Set<string>();
+  for (const list of Array.from(sources.values())) for (const row of list) accountIds.add(row.userId);
+  for (const userId of Array.from(accountIds)) stats.mergedExisting += await mergeExistingDuplicates(client, dedupe, userId);
 
   for (const feedUrl of feedUrls) {
     let posts: FeedPost[];
@@ -159,15 +166,18 @@ async function handleCron(request: Request) {
             const key = message.slice(0, 220);
             aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
           },
-        });
+        }, dedupe);
 
         oldestChecked = true;
         if (status === "known") stats.known++;
+        // Doublon : le plus souvent repéré par le texte, sans analyse IA.
+        else if (status === "duplicate") stats.duplicates++;
         else {
           analyses++;
           if (status === "new_annonce") stats.newAnnonces++;
           else if (status === "not_real_estate") stats.notRealEstate++;
           else if (status === "out_of_area") stats.outOfArea++;
+          else if (status === "price_update") stats.priceUpdates++;
           else stats.aiErrors++;
         }
       }
@@ -181,7 +191,7 @@ async function handleCron(request: Request) {
     const key = message.slice(0, 220);
     aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
   };
-  const reprocessed = await reprocessPending(client, MAX_ANALYSES_PER_RUN - analyses, recordAiError);
+  const reprocessed = await reprocessPending(client, MAX_ANALYSES_PER_RUN - analyses, recordAiError, dedupe);
 
   if (touchedGroups.size) {
     await client

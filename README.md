@@ -115,6 +115,16 @@ publication.
   resume quotidien, jamais deux fois la meme annonce au meme abonne.
 - Non couvert pour l'instant : OCR des photos, transcription audio des videos, distance geographique.
 
+- **Perimetre** : seules les offres situees au Gabon deviennent des annonces. Les recherches de biens
+  (« je cherche un studio ») et les biens a l'etranger sont ecartes.
+- **Anti-doublons** (`src/lib/dedupe.ts`), par regles et sans IA : un texte quasi identique a une annonce
+  des 30 derniers jours est rattache a celle-ci comme diffusion supplementaire, quel que soit le diffuseur
+  (aucune analyse IA n'est alors consommee) ; meme fiche (transaction, type, prix, quartier) avec telephone
+  commun ou texte proche = meme annonce ; meme texte avec un autre prix = mise a jour du prix et nouvelle
+  version. Les doublons deja en base sont archives, jamais supprimes.
+- **RapidAPI** : la collecte manuelle est desactivee et ses boutons masques. Pour la reactiver, definir
+  `NEXT_PUBLIC_RAPIDAPI_COLLECT=true` et redeployer.
+
 Tests : `npm test` (Vitest).
 
 ## Deploiement sur Railway

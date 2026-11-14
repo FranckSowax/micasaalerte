@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeExtraction, toTags } from "./extraction";
+import { isListing, sanitizeExtraction, toTags } from "./extraction";
 
 const SOURCE =
   "Studio meublé à louer à Okala, 150k par mois, caution 2 mois soit 300 000. Climatisé, parking. Appelez le 077 12 34 56";
@@ -134,6 +134,24 @@ describe("sanitizeExtraction", () => {
   it("efface la périodicité pour une vente", () => {
     const e = sanitizeExtraction({ ...good, transaction: "vente", meuble: null }, SOURCE);
     expect(e.periodicite).toBeNull();
+  });
+});
+
+describe("isListing", () => {
+  it("retient une offre immobilière au Gabon", () => {
+    expect(isListing(sanitizeExtraction(good, SOURCE))).toBe(true);
+  });
+
+  it("exclut une recherche de bien", () => {
+    const src = "Bonjour, je cherche un studio ou un appartement à louer vers Okala, budget 150k. 077 12 34 56";
+    const e = sanitizeExtraction({ ...good, transaction: "recherche", extraits: { immobilier: "je cherche un studio ou un appartement à louer" } }, src);
+    expect(e.est_immobilier).toBe(true);
+    expect(isListing(e)).toBe(false);
+  });
+
+  it("exclut un bien hors Gabon et une publication non immobilière", () => {
+    expect(isListing({ est_immobilier: true, hors_gabon: true, transaction: "location" })).toBe(false);
+    expect(isListing({ est_immobilier: false, hors_gabon: false, transaction: "inconnu" })).toBe(false);
   });
 });
 

@@ -9,7 +9,7 @@ type ServiceClient = ReturnType<typeof createServiceClient>;
 const RECHECK_MS = 5 * 60_000;
 let detailsColumn: { present: boolean; checkedAt: number } | null = null;
 
-async function hasDetailsColumn(client: ServiceClient): Promise<boolean> {
+export async function hasDetailsColumn(client: ServiceClient): Promise<boolean> {
   if (detailsColumn && (detailsColumn.present || Date.now() - detailsColumn.checkedAt < RECHECK_MS)) {
     return detailsColumn.present;
   }
