@@ -63,7 +63,9 @@ async function handleCron(request: Request) {
       });
 
       if (!response.ok) {
-        results.push({ group: group.group_name, error: `RapidAPI ${response.status}` });
+        // Le corps de la réponse dit pourquoi (abonnement, quota, clé) : on le remonte, tronqué.
+        const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
+        results.push({ group: group.group_name, error: `RapidAPI ${response.status}${detail ? ` : ${detail}` : ""}` });
         continue;
       }
 
