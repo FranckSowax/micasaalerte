@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findListingDuplicate, findTextDuplicate, fingerprint, sameNumbers, similarity, type Candidate, type ListingKey } from "./dedupe";
+import { findListingDuplicate, findTextDuplicate, fingerprint, sameNumbers, sameShortText, similarity, type Candidate, type ListingKey } from "./dedupe";
 
 const BASE =
   "🇬🇦🇬🇦.. APPARTEMENT BON STANDING À LOUER ANGONDJÉ APRÈS LA MOSQUÉE DE LA PAIX. 📌 CARACTÉRISTIQUES 🟦2 CHAMBRES AVEC PLACARDS 🟦 SALON 🟦 CUISINE 🟦 DOUCHE 🟦 TERRASSE. Loyer 250 000 FCFA, caution 2 mois. Contact 062 09 08 02";
@@ -100,5 +100,30 @@ describe("findListingDuplicate (après l'IA)", () => {
   ])("ne fusionne pas sur la fiche seule : %s", (_label, overrides) => {
     const rewritten = "Bel appart à Angondjé vers la mosquée, dispo de suite. Appelez le 062090802 pour visiter";
     expect(findListingDuplicate(fingerprint(rewritten), key(overrides), [candidate(BASE)])).toBeNull();
+  });
+});
+
+describe("textes courts tronqués par le flux", () => {
+  // Cas réel : le flux ne transmet que la première ligne, republiée par le même diffuseur.
+  const court = "APPARTEMENTS À LOUER OKALA 📍";
+  const deja = (author: string | null, text = "Appartements à louer Okala"): Candidate => ({ ...candidate(text, {}, "ancien"), author });
+
+  it("fusionne un même texte court republié par le même diffuseur", () => {
+    const match = findTextDuplicate(fingerprint(court), [deja("Agence Okala Immo")], "agence okala immo");
+    expect(match?.candidate.id).toBe("ancien");
+    expect(match?.kind).toBe("same_text");
+  });
+
+  it("ne fusionne pas le même texte court publié par un autre diffuseur", () => {
+    expect(findTextDuplicate(fingerprint(court), [deja("Agence Okala Immo")], "Autre Agence")).toBeNull();
+    expect(findTextDuplicate(fingerprint(court), [deja(null)], null)).toBeNull();
+  });
+
+  it("ne fusionne pas deux textes courts différents du même diffuseur", () => {
+    expect(findTextDuplicate(fingerprint("Appartements à louer Owendo"), [deja("Agence Okala Immo")], "Agence Okala Immo")).toBeNull();
+  });
+
+  it("garde la comparaison par groupes de mots pour les textes longs", () => {
+    expect(sameShortText(fingerprint(BASE), "Lewis", { ...candidate(BASE), author: "Lewis" })).toBe(false);
   });
 });

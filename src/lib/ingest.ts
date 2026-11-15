@@ -240,7 +240,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
   const candidates = index ? await index.get(client, input.userId) : [];
 
   // Étape 1 : texte quasi identique à une annonce récente → doublon, sans appel à l'IA.
-  const textDuplicate = findTextDuplicate(fp, candidates);
+  const textDuplicate = findTextDuplicate(fp, candidates, input.author);
   if (textDuplicate) {
     await linkDuplicate(client, rawPostId, textDuplicate.candidate.id);
     await addSource(client, textDuplicate.candidate.id, sourceRef(input));
@@ -360,7 +360,7 @@ export async function mergeExistingDuplicates(client: ServiceClient, index: Dedu
   let merged = 0;
 
   for (const annonce of oldestFirst) {
-    const match = findTextDuplicate(annonce.fp, kept) ?? findListingDuplicate(annonce.fp, annonce, kept);
+    const match = findTextDuplicate(annonce.fp, kept, annonce.author) ?? findListingDuplicate(annonce.fp, annonce, kept);
     if (!match || match.kind === "price_update" || annonce.status !== "new") {
       kept.push(annonce);
       continue;

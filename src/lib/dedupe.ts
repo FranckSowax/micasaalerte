@@ -29,6 +29,8 @@ export interface Fingerprint {
   /** Montants et grands nombres du texte (prix, caution…), triés : repère les changements de prix. */
   numbers: string[];
   words: number;
+  /** Texte normalisé complet, hors téléphones : sert à comparer les textes trop courts pour les groupes de mots. */
+  text: string;
 }
 
 /**
@@ -50,7 +52,24 @@ export function fingerprint(text: string): Fingerprint {
   const shingles = new Set<string>();
   for (let i = 0; i + SHINGLE_SIZE <= words.length; i++) shingles.add(words.slice(i, i + SHINGLE_SIZE).join(" "));
 
-  return { shingles, numbers: Array.from(numbers).sort(), words: words.length };
+  return { shingles, numbers: Array.from(numbers).sort(), words: words.length, text: words.join(" ") };
+}
+
+/**
+ * Même texte court republié par le même diffuseur.
+ * WHY: le flux ne transmet parfois que la première ligne d'une publication (« Appartements à
+ * louer Okala »). Trop courte pour la comparaison par groupes de mots, chaque republication
+ * devenait une nouvelle annonce, sans prix, renvoyée à l'abonné dans « À vérifier ». Pour ces
+ * textes courts, on exige l'égalité exacte ET le même auteur, pour ne pas fusionner deux biens
+ * différents d'auteurs différents qui commencent par la même phrase.
+ *
+ * @example sameShortText(fingerprint("Appartements à louer Okala"), "Agence X", candidat)
+ */
+export function sameShortText(fp: Fingerprint, author: string | null | undefined, candidate: Candidate): boolean {
+  if (fp.words < 2 || (fp.words >= MIN_WORDS && candidate.fp.words >= MIN_WORDS)) return false;
+  const a = normalizeText(author || "");
+  const b = normalizeText(candidate.author || "");
+  return !!a && a === b && fp.text === candidate.fp.text;
 }
 
 /** Proportion de groupes de mots communs (indice de Jaccard), entre 0 et 1. */
@@ -80,6 +99,8 @@ export interface ListingKey {
 export interface Candidate extends ListingKey {
   id: string;
   fp: Fingerprint;
+  /** Diffuseur de l'annonce, quand il est connu. */
+  author?: string | null;
 }
 
 export type DuplicateKind = "same_text" | "same_listing" | "price_update";
@@ -94,7 +115,7 @@ export interface DuplicateMatch {
  * Étape 1, avant l'analyse IA : texte quasi identique et mêmes montants.
  * Aucune analyse n'est alors nécessaire, l'annonce existe déjà.
  */
-export function findTextDuplicate(fp: Fingerprint, candidates: Candidate[]): DuplicateMatch | null {
+export function findTextDuplicate(fp: Fingerprint, candidates: Candidate[], author?: string | null): DuplicateMatch | null {
   let best: DuplicateMatch | null = null;
   for (const candidate of candidates) {
     const score = similarity(fp, candidate.fp);
@@ -102,7 +123,10 @@ export function findTextDuplicate(fp: Fingerprint, candidates: Candidate[]): Dup
       best = { candidate, kind: "same_text", score };
     }
   }
-  return best;
+  if (best) return best;
+  // Texte trop court pour la comparaison par groupes de mots : égalité exacte, même diffuseur.
+  const short = candidates.find((candidate) => sameShortText(fp, author, candidate));
+  return short ? { candidate: short, kind: "same_text", score: 1 } : null;
 }
 
 function sameField(a: string | null, b: string | null): boolean {
