@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { AnnonceActions } from "./actions";
+import { CompleteText } from "./complete-text";
+import { looksTruncated } from "@/lib/complete-annonce";
 import { ImageGallery } from "@/components/image-gallery";
 import type { Annonce } from "@/types/database";
 
@@ -147,6 +149,9 @@ export default async function AnnonceDetailPage({
             </CardHeader>
             <CardContent>
               <p className="text-sm text-foreground/80 whitespace-pre-wrap">{annonce.raw_text}</p>
+              <div className="mt-4">
+                <CompleteText annonceId={annonce.id} truncated={looksTruncated(annonce.raw_text)} postUrl={annonce.fb_post_url} />
+              </div>
             </CardContent>
           </Card>
         </div>

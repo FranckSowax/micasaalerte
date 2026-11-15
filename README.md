@@ -150,6 +150,12 @@ publication.
   obligatoires ne changent jamais. Applique par le cron, l'inscription et la modification des criteres.
   L'ecran `/avis` montre ce qui a ete appris et propose une analyse d'ensemble par le modele d'IA
   (raisonnement, constats, recommandations), sans donnee personnelle et sans effet automatique.
+- **Textes tronques par le flux** (`src/lib/complete-annonce.ts`) : pour certaines publications
+  (premiere ligne mise en titre par Facebook, suite sous « Voir plus »), rss.app ne transmet que
+  cette premiere ligne ; `content_html` n'en contient pas davantage (mesure `shapes` dans les logs
+  de la collecte). Ces annonces sont retenues pour verification, jamais envoyees d'office. La fiche
+  annonce les signale et permet a l'agent de coller le texte complet : l'annonce est reanalysee.
+  Si le flux fournit plus tard un texte nettement plus long, la reanalyse est automatique (`enriched`).
 - **Journal des envois** (ecran `/envois`) : chaque annonce envoyee a un abonne, son parcours
   (collecte, analyse, envoi, reaction) et le detail du matching recalcule avec ses criteres actuels.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis

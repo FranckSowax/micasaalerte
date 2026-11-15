@@ -1,5 +1,6 @@
 import { analyzePost } from "./ai";
 import { annonceFieldsFromAnalysis, hasDetailsColumn } from "./annonce-fields";
+import { isRicherText, reanalyzeAnnonce } from "./complete-annonce";
 import { normalizePhone } from "./contacts";
 import {
   DEDUPE_WINDOW_DAYS,
@@ -15,6 +16,8 @@ type ServiceClient = ReturnType<typeof createServiceClient>;
 
 export type IngestStatus =
   | "known"
+  /** Publication connue dont le flux fournit maintenant un texte plus complet : annonce réanalysée. */
+  | "enriched"
   | "not_real_estate"
   | "out_of_area"
   | "duplicate"
@@ -180,12 +183,26 @@ function sourceRef(input: IngestInput): SourceRef {
 export async function ingestPost(client: ServiceClient, input: IngestInput, index?: DedupeIndex): Promise<IngestStatus> {
   const { data: seen } = await client
     .from("raw_posts")
-    .select("id, ai_status")
+    .select("id, ai_status, raw_text")
     .eq("user_id", input.userId)
     .eq("fb_post_id", input.postId)
     .maybeSingle();
 
-  if (seen && seen.ai_status !== "error" && seen.ai_status !== "pending") return "known";
+  if (seen && seen.ai_status !== "error" && seen.ai_status !== "pending") {
+    // Publication déjà connue, mais le flux en donne maintenant un texte nettement plus complet
+    // (la première fois, seule la première ligne était arrivée) : l'annonce est réanalysée.
+    // Sans texte mémorisé à comparer, on ne conclut rien.
+    if (typeof seen.raw_text === "string" && seen.raw_text && isRicherText(input.text, seen.raw_text)) {
+      await client.from("raw_posts").update({ raw_text: input.text }).eq("id", seen.id);
+      const { data: annonce } = await client.from("annonces").select("id").eq("user_id", input.userId).eq("fb_post_id", input.postId).maybeSingle();
+      if (annonce) {
+        const result = await reanalyzeAnnonce(client, { annonceId: annonce.id as string, userId: input.userId, text: input.text, legacyAiKey: input.legacyAiKey });
+        if (result.ok) return "enriched";
+        input.onAiError?.(result.error);
+      }
+    }
+    return "known";
+  }
 
   const { data: existing } = await client
     .from("annonces")
