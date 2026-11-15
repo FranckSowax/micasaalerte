@@ -130,6 +130,8 @@ interface ClientAnnonce {
   doubts?: string[];
   /** Avis donné par l'abonné (pertinente, ou la raison du refus). */
   feedback?: string | null;
+  /** Mention affichée quand l'annonce a été retirée pour tous les abonnés. */
+  withdrawn?: string | null;
   sentAt: string | null;
   typeOffre: string | null;
   typeBien: string | null;
@@ -597,6 +599,12 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
               <Card key={a.id} className="overflow-hidden">
                 <PhotoGallery photos={a.images?.length ? a.images : a.image ? [a.image] : []} />
                 <CardContent className="p-4 space-y-3">
+                  {a.withdrawn && (
+                    <p className="flex items-start gap-2 rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                      <span>{a.withdrawn}</span>
+                    </p>
+                  )}
                   {!!a.doubts?.length && (
                     <p className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
                       <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />

@@ -240,3 +240,26 @@ export async function interpretClientMessage(
 
   return JSON.parse(extractJson(content)) as ChatbotIntent;
 }
+
+/**
+ * Avis du modèle sur une annonce signalée par des abonnés (arnaque, bien déjà loué ou vendu).
+ * Renvoie le texte brut de la réponse, à lire avec `parseReportAnalysis` ; null si le modèle
+ * n'a rien rédigé. Le modèle conseille l'agent : il ne retire jamais une annonce lui-même.
+ *
+ * @example const raw = await analyzeReportedAnnonce(reportAnalysisPrompt({ ... }))
+ */
+export async function analyzeReportedAnnonce(prompt: string, apiKey?: string | null): Promise<string | null> {
+  const { client, model, jsonMode, reasoningBudget, extraBody } = getAIProvider(apiKey);
+  const response = await client.chat.completions.create(
+    {
+      model,
+      ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+      ...extraBody,
+      max_tokens: 500 + reasoningBudget,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+    },
+    { timeout: 30_000 }
+  );
+  return response.choices[0]?.message?.content || null;
+}

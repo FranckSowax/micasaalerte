@@ -3,6 +3,7 @@ import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/de
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
 import { DEFAULT_MAX_ALERTS_PER_DAY, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "@/lib/matching";
 import { MAX_PER_ANNONCE } from "@/lib/photos";
+import { activeReports, isReport, mainReason, shouldAutoWithdraw, withdrawalOf, withWithdrawal, type FeedbackRow } from "@/lib/reports";
 import { annonceVersion, doubtLabels } from "@/lib/review";
 import type { Annonce, ClientDemand } from "@/types/database";
 import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
@@ -66,11 +67,16 @@ export async function GET(request: Request, { params }: { params: { token: strin
     // Critères modifiés : une annonce encore « à trier » qui ne correspond plus n'est plus proposée.
     // Celles que l'abonné a retenues ou supprimées restent visibles : c'est son propre tri.
     if (clientStatus === "new" && !match.eligible) continue;
+    // Annonce retirée (signalée par des abonnés, validée par l'agent ou par le seuil) : elle
+    // n'est plus proposée. Si l'abonné l'avait déjà classée, il la garde avec la mention du retrait.
+    const withdrawal = annonce.status === "archived" ? withdrawalOf(annonce.details as Record<string, unknown> | null) : null;
+    if (clientStatus === "new" && annonce.status === "archived") continue;
     const point = locateAnnonce(annonce as Parameters<typeof locateAnnonce>[0]);
     items.push({
       id: annonce.id,
       status: clientStatus,
       feedback: (send.client_feedback as string | null | undefined) ?? null,
+      withdrawn: withdrawal ? (withdrawal.reason === "arnaque" ? "Annonce retirée : signalée comme arnaque" : "Annonce retirée : bien déjà loué ou vendu") : null,
       // Informations manquantes à vérifier auprès de l'annonceur (onglet « À vérifier »),
       // recalculées avec les critères actuels de l'abonné.
       doubts: doubtLabels(match.decisiveDoubts),
@@ -175,7 +181,29 @@ export async function POST(request: Request, { params }: { params: { token: stri
     console.error("Client action failed:", error.message);
     return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
+  // Deux abonnés différents signalent la même annonce : elle est retirée chez tous, sans attendre l'agent.
+  if (isReport(feedback)) await autoWithdraw(supabase, parsed.data.annonceId);
+
   return withDeviceCookie(NextResponse.json({ success: true, status: STATUS_BY_ACTION[parsed.data.action] }), newDeviceId);
+}
+
+/** Retire l'annonce (statut « archived ») si le seuil de signalements est atteint. Sans effet sinon. */
+async function autoWithdraw(supabase: ReturnType<typeof createServiceClient>, annonceId: string): Promise<void> {
+  const [{ data: annonce }, { data: rows, error }] = await Promise.all([
+    supabase.from("annonces").select("id, status, details").eq("id", annonceId).maybeSingle(),
+    supabase.from("client_demand_sends").select("demand_id, annonce_id, client_feedback, decided_at").eq("annonce_id", annonceId).not("client_feedback", "is", null),
+  ]);
+  // Colonne client_feedback absente ou annonce introuvable : rien à faire.
+  if (error || !annonce || !rows) return;
+  const details = annonce.details as Record<string, unknown> | null;
+  const reports = rows as unknown as FeedbackRow[];
+  if (!shouldAutoWithdraw(reports, details)) return;
+
+  const { error: updateError } = await supabase
+    .from("annonces")
+    .update({ status: "archived", details: withWithdrawal(details, mainReason(activeReports(reports, details)), "auto") })
+    .eq("id", annonceId);
+  if (updateError) console.error("Auto withdraw failed:", updateError.message);
 }
 
 export async function PATCH(request: Request, { params }: { params: { token: string } }) {

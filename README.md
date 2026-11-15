@@ -138,6 +138,14 @@ publication.
   « souhaites » (score) ou « indispensables » (l'annonce doit les mentionner). Un numero deja
   inscrit est refuse et renvoye vers `/login` (il modifie ses criteres dans son espace). « Deconnexion »
   dans l'espace client delie l'appareil. Un compte agent se cree par email : `/signup?agent=1`.
+- **Avis des abonnes** (`src/lib/reports.ts`, ecran `/avis`) : chaque annonce recue peut etre jugee
+  pertinente, pas pertinente (prix, quartier, type, equipements), deja louee ou vendue, ou signalee
+  comme arnaque. Deux abonnes differents qui signalent la meme annonce la retirent automatiquement
+  chez tous (`annonces.status = archived`, `details.withdrawn`) ; l'agent peut aussi la retirer, la
+  garder ou la remettre en ligne. Le modele d'IA donne un avis motive sur chaque annonce signalee
+  (`details.report_analysis`) : c'est une aide, jamais une decision.
+- **Journal des envois** (ecran `/envois`) : chaque annonce envoyee a un abonne, son parcours
+  (collecte, analyse, envoi, reaction) et le detail du matching recalcule avec ses criteres actuels.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
   trois formules : 1 jour a 1 000 FCFA (48 h pendant la promo de lancement, constante `LAUNCH_PROMO`),
   7 jours a 5 000 FCFA, 30 jours a 15 000 FCFA. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp

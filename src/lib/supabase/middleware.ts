@@ -45,6 +45,8 @@ export async function updateSession(request: NextRequest) {
     "/historique",
     "/clients",
     "/verifications",
+    "/envois",
+    "/avis",
     "/whatsapp",
     "/settings",
   ];
