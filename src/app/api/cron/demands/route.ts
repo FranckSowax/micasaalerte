@@ -29,8 +29,6 @@ export const GET = handleCron;
 export const POST = handleCron;
 
 const RECENT_ANNONCES = 200;
-/** Annonces ajoutées à l'espace d'un abonné par passage, les mieux notées d'abord. */
-const MAX_PER_RUN = 10;
 
 type Supabase = ReturnType<typeof createServiceClient>;
 
@@ -282,8 +280,14 @@ async function handleCron(request: Request) {
       if (!candidates.length) continue;
       candidates.sort((a, b) => b.score - a.score);
 
-      const remaining = Math.max(0, (demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY) - addedToday);
-      const picked = candidates.slice(0, Math.min(remaining, MAX_PER_RUN)).map((c) => c.annonce);
+      // Toutes les annonces en attente partent d'un coup : l'alerte est un seul message avec un lien,
+      // il n'y a donc plus de rafale à éviter. Seul reste le plafond quotidien, filet de sécurité
+      // contre des critères trop larges ou un emballement de la collecte.
+      // WHY: Math.max — les abonnés existants ont encore l'ancien plafond (30) enregistré en base ;
+      // le minimum du code s'applique tant que la base n'est pas mise à jour.
+      const dailyCap = Math.max(demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY, DEFAULT_MAX_ALERTS_PER_DAY);
+      const remaining = Math.max(0, dailyCap - addedToday);
+      const picked = candidates.slice(0, remaining).map((c) => c.annonce);
       if (candidates.length > picked.length) stats.capped += candidates.length - picked.length;
       if (!picked.length) continue;
 

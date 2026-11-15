@@ -610,6 +610,11 @@ END $$;
 ALTER TABLE client_demands ALTER COLUMN max_alerts_per_day SET DEFAULT 30;
 UPDATE client_demands SET max_alerts_per_day = 30 WHERE max_alerts_per_day = 5;
 
+-- Plafond relevé à 100 : toutes les annonces en attente partent en un seul message, le plafond
+-- n'est plus qu'un filet de sécurité. Le code applique déjà 100 au minimum ; ces lignes alignent la base.
+ALTER TABLE client_demands ALTER COLUMN max_alerts_per_day SET DEFAULT 100;
+UPDATE client_demands SET max_alerts_per_day = 100 WHERE max_alerts_per_day IN (5, 30);
+
 -- ============================================================
 -- ABONNEMENT CLIENT (rejouable)
 -- ============================================================
