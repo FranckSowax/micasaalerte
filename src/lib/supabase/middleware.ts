@@ -44,6 +44,7 @@ export async function updateSession(request: NextRequest) {
     "/tiktok",
     "/historique",
     "/clients",
+    "/verifications",
     "/whatsapp",
     "/settings",
   ];

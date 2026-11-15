@@ -21,6 +21,7 @@ import {
   UserCheck,
   Video,
   Map as MapIcon,
+  ClipboardCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/groupes/raw-posts", label: "Données brutes", icon: Database },
   { href: "/historique", label: "Historique", icon: History },
   { href: "/clients", label: "Clients", icon: Users2 },
+  { href: "/verifications", label: "À vérifier", icon: ClipboardCheck },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
