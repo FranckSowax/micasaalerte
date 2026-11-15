@@ -239,6 +239,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
   const [plan, setPlan] = useState("day");
   const [copied, setCopied] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   /** Copie la référence de commande, à coller dans le menu Airtel Money. */
   const copyReference = async (reference: string) => {
@@ -605,14 +606,20 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           ))}
         </div>
 
-        <Map
-          center={space.zones[0] ? [space.zones[0].lat, space.zones[0].lon] : DEFAULT_MAP_CENTER}
-          zoom={DEFAULT_MAP_ZOOM}
-          markers={markers}
-          circles={space.zones.map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: "#3b82f6", label: z.label }))}
-          fitContent={markers.length > 0 || space.zones.length > 0}
-          className="h-64 w-full rounded-lg overflow-hidden"
-        />
+        {/* La carte n'est chargée que sur demande : la liste des annonces arrive tout de suite. */}
+        <Button variant="outline" className="w-full min-h-[48px]" aria-expanded={showMap} onClick={() => setShowMap(!showMap)}>
+          <MapPin className="h-4 w-4 mr-1" /> {showMap ? "Masquer la carte" : "Voir sur la carte"}
+        </Button>
+        {showMap && (
+          <Map
+            center={space.zones[0] ? [space.zones[0].lat, space.zones[0].lon] : DEFAULT_MAP_CENTER}
+            zoom={DEFAULT_MAP_ZOOM}
+            markers={markers}
+            circles={space.zones.map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: "#3b82f6", label: z.label }))}
+            fitContent={markers.length > 0 || space.zones.length > 0}
+            className="h-64 w-full rounded-lg overflow-hidden"
+          />
+        )}
 
         {!visible.length ? (
           <Card>
