@@ -2,12 +2,13 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkCode, OTP_COOKIE, OTP_MAX_ATTEMPTS, OTP_TTL_MS, readChallenge } from "@/lib/login-otp";
-import { countAgentsByPhone, createAgent, findAgentByPhone, otpSecret } from "@/lib/login-otp-server";
+import { findAgentByPhone, openClientSpace, otpSecret } from "@/lib/login-otp-server";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-// Connexion de l'agent, étape 2 : vérification du code reçu sur WhatsApp, puis ouverture de la
-// session Supabase (les mêmes cookies qu'une connexion par email).
+// Connexion, étape 2 : vérification du code reçu sur WhatsApp.
+// - numéro d'un agent  → session Supabase (administration), redirection vers /dashboard ;
+// - numéro d'un abonné → son espace client s'ouvre sur cet appareil, redirection vers /c/<lien>.
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,13 @@ const usedNonces = new Set<string>();
 const fail = (error: string, status: number, clear = false) => {
   if (clear) cookies().delete(OTP_COOKIE);
   return NextResponse.json({ error }, { status });
+};
+
+const done = (nonce: string, redirect: string) => {
+  usedNonces.add(nonce);
+  if (usedNonces.size > 5000) usedNonces.clear();
+  cookies().delete(OTP_COOKIE);
+  return NextResponse.json({ success: true, redirect });
 };
 
 export async function POST(request: Request) {
@@ -43,20 +51,15 @@ export async function POST(request: Request) {
   }
   if (usedNonces.has(challenge.nonce)) return fail("Code déjà utilisé. Demandez un nouveau code.", 401, true);
 
-  let agent = await findAgentByPhone(check.challenge.phone);
-  let created = false;
+  const phone = check.challenge.phone;
+  const agent = await findAgentByPhone(phone);
 
-  // Inscription : le numéro est prouvé par le code. S'il a déjà un compte, on connecte simplement.
-  if (!agent && check.challenge.signupName) {
-    const existing = await countAgentsByPhone(check.challenge.phone);
-    if (existing === null) return fail("Inscription impossible pour le moment. Réessayez.", 500);
-    if (existing > 0) return fail("Ce numéro est lié à plusieurs comptes. Connectez-vous par email.", 409, true);
-    usedNonces.add(challenge.nonce);
-    agent = await createAgent(check.challenge.phone, check.challenge.signupName);
-    if (!agent) return fail("Création du compte impossible. Réessayez, ou inscrivez-vous par email.", 500, true);
-    created = true;
+  if (!agent) {
+    // Pas un agent : c'est un abonné, on ouvre son espace client sur cet appareil.
+    const token = await openClientSpace(phone);
+    if (!token) return fail("Code incorrect.", 401);
+    return done(challenge.nonce, `/c/${token}`);
   }
-  if (!agent) return fail("Code incorrect.", 401);
 
   // WHY: Supabase n'ouvre pas de session « par numéro WhatsApp ». Le serveur fabrique un lien
   // magique à usage unique pour le compte de l'agent et le consomme aussitôt, sans jamais
@@ -76,8 +79,5 @@ export async function POST(request: Request) {
     return fail("Connexion impossible. Utilisez la connexion par email.", 500);
   }
 
-  usedNonces.add(challenge.nonce);
-  if (usedNonces.size > 5000) usedNonces.clear();
-  cookies().delete(OTP_COOKIE);
-  return NextResponse.json({ success: true, created });
+  return done(challenge.nonce, "/dashboard");
 }

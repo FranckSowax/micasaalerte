@@ -125,10 +125,13 @@ publication.
   Le lien est lie au premier appareil qui l'ouvre (cookie) : ouvert ailleurs, il est refuse, et le client
   peut demander un nouveau lien, envoye uniquement sur son numero WhatsApp (l'ancien est alors invalide).
   Elle est appelee toutes les heures par le service Railway `cron-alertes`.
-- **Connexion de l'agent** (`src/lib/login-otp.ts`, `/api/auth/otp/*`) : code a 6 chiffres envoye sur le
-  numero WhatsApp enregistre dans Parametres (valable 5 minutes, 5 essais, usage unique). Le code n'est
-  pas stocke en base : le defi est un cookie signe. L'email et le mot de passe restent disponibles en
-  secours (« Se connecter par email »), indispensables si la session WhatsApp est deconnectee.
+- **Connexion par code WhatsApp** (`src/lib/login-otp.ts`, `/api/auth/otp/*`, page `/login`) : code a
+  6 chiffres (valable 5 minutes, 5 essais, usage unique), sans stockage en base (defi = cookie signe).
+  Un numero d'agent (Parametres) ouvre l'administration ; un numero d'abonne ouvre son espace client sur
+  l'appareil (nouveau lien, ancien invalide). L'email et le mot de passe restent le secours de l'agent,
+  indispensables si la session WhatsApp est deconnectee.
+- **Inscription** : `/signup` conduit un visiteur au formulaire d'abonne du compte principal
+  (`OWNER_USER_ID`, sinon le plus ancien compte agent). Un compte agent se cree par email : `/signup?agent=1`.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
   trois formules : 1 jour a 1 000 FCFA (48 h pendant la promo de lancement, constante `LAUNCH_PROMO`),
   7 jours a 5 000 FCFA, 30 jours a 15 000 FCFA. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp

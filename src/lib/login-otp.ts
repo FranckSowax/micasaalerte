@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 
-// Connexion de l'agent par code à usage unique envoyé sur WhatsApp.
+// Connexion par code à usage unique envoyé sur WhatsApp (agent ou abonné).
 // WHY: aucun code n'est enregistré en base. Le défi (numéro, expiration, identifiant) est déposé
 // dans un cookie signé ; la signature dépend du code, que seul WhatsApp transporte. Sans le code,
 // le cookie ne permet ni de le retrouver ni d'en fabriquer un autre.
@@ -17,8 +17,6 @@ export interface OtpChallenge {
   exp: number;
   /** Identifiant aléatoire du défi : compte les tentatives et empêche la réutilisation. */
   nonce: string;
-  /** Présent pour une inscription : nom du nouvel agent, dont le compte est créé une fois le code validé. */
-  signupName?: string;
 }
 
 /**
@@ -49,19 +47,8 @@ function sign(payload: string, code: string, secret: string): Buffer {
  *
  * @example const { cookie } = sealChallenge("24177123456", "042917", secret)
  */
-export function sealChallenge(
-  phone: string,
-  code: string,
-  secret: string,
-  now: number = Date.now(),
-  signupName?: string
-): { challenge: OtpChallenge; cookie: string } {
-  const challenge: OtpChallenge = {
-    phone,
-    exp: now + OTP_TTL_MS,
-    nonce: randomBytes(12).toString("base64url"),
-    ...(signupName ? { signupName } : {}),
-  };
+export function sealChallenge(phone: string, code: string, secret: string, now: number = Date.now()): { challenge: OtpChallenge; cookie: string } {
+  const challenge: OtpChallenge = { phone, exp: now + OTP_TTL_MS, nonce: randomBytes(12).toString("base64url") };
   const payload = Buffer.from(JSON.stringify(challenge)).toString("base64url");
   return { challenge, cookie: `${payload}.${sign(payload, code, secret).toString("base64url")}` };
 }
@@ -73,8 +60,7 @@ export function readChallenge(cookie: string | null | undefined): OtpChallenge |
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Partial<OtpChallenge>;
     if (typeof data.phone !== "string" || typeof data.exp !== "number" || typeof data.nonce !== "string") return null;
-    const signupName = typeof data.signupName === "string" && data.signupName.trim() ? data.signupName.trim().slice(0, 80) : undefined;
-    return { phone: data.phone, exp: data.exp, nonce: data.nonce, ...(signupName ? { signupName } : {}) };
+    return { phone: data.phone, exp: data.exp, nonce: data.nonce };
   } catch {
     return null;
   }

@@ -93,6 +93,9 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
           <p className="text-sm text-primary mt-2">
             {TRIAL_HOURS} h d&apos;essai gratuit, puis {offers}
           </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Déjà inscrit ? <a href="/login" className="text-primary hover:underline">Ouvrir mon espace</a>
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

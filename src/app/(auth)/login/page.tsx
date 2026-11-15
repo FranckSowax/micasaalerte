@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Home, Loader2, MessageCircle } from "lucide-react";
 
-/** Connexion de l'agent : code reçu sur WhatsApp, avec l'email et le mot de passe en secours. */
+/** Connexion par code WhatsApp : l'abonné arrive dans son espace, l'agent dans l'administration (email en secours). */
 export default function LoginPage() {
   const [mode, setMode] = useState<"whatsapp" | "email">("whatsapp");
   const [step, setStep] = useState<"phone" | "code">("phone");
@@ -23,15 +23,20 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const enter = () => {
-    router.push("/dashboard");
+  const enter = (to = "/dashboard") => {
+    // Espace client : chargement complet de la page, pour que l'appareil y soit lié.
+    if (to.startsWith("/c/")) {
+      window.location.assign(to);
+      return;
+    }
+    router.push(to);
     router.refresh();
   };
 
   const post = async (path: string, body: Record<string, string>) => {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    return { ok: res.ok, data: data as { error?: string; message?: string } };
+    return { ok: res.ok, data: data as { error?: string; message?: string; redirect?: string } };
   };
 
   const requestCode = async (e?: React.FormEvent) => {
@@ -57,7 +62,7 @@ export default function LoginPage() {
     setLoading(true); setError(""); setInfo("");
     try {
       const { ok, data } = await post("/api/auth/otp/verify", { code });
-      if (ok) return enter();
+      if (ok) return enter(data.redirect);
       setError(data.error || "Code incorrect.");
     } catch {
       setError("Connexion impossible. Réessayez.");
@@ -98,7 +103,7 @@ export default function LoginPage() {
           </Link>
           <CardTitle className="text-xl">Connexion</CardTitle>
           <CardDescription>
-            {mode === "whatsapp" ? "Recevez un code de connexion sur votre WhatsApp" : "Connectez-vous avec votre email et votre mot de passe"}
+            {mode === "whatsapp" ? "Recevez un code de connexion sur votre WhatsApp" : "Accès agent : email et mot de passe"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,7 +124,7 @@ export default function LoginPage() {
                   onChange={(e) => setPhone(e.target.value)}
                   required
                 />
-                <p className="text-xs text-muted-foreground">Le numéro enregistré dans vos Paramètres, avec l&apos;indicatif du pays.</p>
+                <p className="text-xs text-muted-foreground">Le numéro utilisé à votre inscription, avec l&apos;indicatif du pays.</p>
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-2" />}
@@ -191,7 +196,7 @@ export default function LoginPage() {
           </div>
 
           <Button variant="outline" className="w-full" onClick={() => switchMode(mode === "whatsapp" ? "email" : "whatsapp")}>
-            {mode === "whatsapp" ? "Se connecter par email" : "Se connecter par WhatsApp"}
+            {mode === "whatsapp" ? "Accès agent par email" : "Se connecter par WhatsApp"}
           </Button>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
