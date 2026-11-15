@@ -65,6 +65,59 @@ function PhotoGallery({ photos }: { photos: string[] }) {
   );
 }
 
+/**
+ * Temps restant avant la fin de l'essai gratuit ou de l'abonnement, mis à jour chaque seconde.
+ * À zéro, `onEnd` recharge l'espace pour afficher « Accès terminé ».
+ *
+ * @example remainingParts(90_061_000) // { days: 1, hours: 1, minutes: 1, seconds: 1 }
+ */
+function remainingParts(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return { days: Math.floor(total / 86400), hours: Math.floor((total % 86400) / 3600), minutes: Math.floor((total % 3600) / 60), seconds: total % 60 };
+}
+
+function Countdown({ endsAt, label, onEnd }: { endsAt: string; label: string; onEnd: () => void }) {
+  const end = Date.parse(endsAt);
+  // Null au premier rendu : le serveur et le navigateur n'ont pas la même heure à la seconde près.
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const left = now === null ? null : end - now;
+  useEffect(() => {
+    if (left !== null && left <= 0) onEnd();
+    // onEnd change d'identité à chaque rendu : seul le passage à zéro doit le déclencher.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [left !== null && left <= 0]);
+
+  if (left === null || Number.isNaN(end) || left <= 0) return null;
+  const { days, hours, minutes, seconds } = remainingParts(left);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const cells = days > 0
+    ? [{ v: String(days), u: days > 1 ? "jours" : "jour" }, { v: pad(hours), u: "h" }, { v: pad(minutes), u: "min" }]
+    : [{ v: pad(hours), u: "h" }, { v: pad(minutes), u: "min" }, { v: pad(seconds), u: "s" }];
+  const urgent = left < 3 * 3600 * 1000;
+  const spoken = days > 0 ? `${days} jour${days > 1 ? "s" : ""} ${hours} heures` : `${hours} heures ${minutes} minutes`;
+
+  return (
+    <div className={`rounded-xl border-2 px-4 py-3 ${urgent ? "border-destructive bg-destructive/10" : "border-primary bg-primary/10"}`} role="timer" aria-label={`${label} : ${spoken}`}>
+      <p className="text-sm font-semibold">{label}</p>
+      <p className="mt-1 flex items-baseline gap-3" aria-hidden="true">
+        {cells.map((cell) => (
+          <span key={cell.u} className="flex items-baseline gap-1">
+            <span className={`text-3xl font-extrabold tabular-nums ${urgent ? "text-destructive" : "text-primary"}`}>{cell.v}</span>
+            <span className="text-sm font-semibold text-muted-foreground">{cell.u}</span>
+          </span>
+        ))}
+      </p>
+    </div>
+  );
+}
+
 type ClientStatus = "new" | "kept" | "removed";
 
 interface ClientAnnonce {
@@ -395,6 +448,14 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
                     {sub.status === "expired" && `Vous ne recevez plus de nouvelles annonces. Renouvelez : ${price}.`}
                   </p>
                 </div>
+
+                {sub.status !== "expired" && sub.endsAt && (
+                  <Countdown
+                    endsAt={sub.endsAt}
+                    label={sub.status === "trial" ? "Essai gratuit : temps restant" : "Abonnement : temps restant"}
+                    onEnd={load}
+                  />
+                )}
 
                 {sub.pendingPayment && (
                   <p className="text-sm text-primary">Paiement déclaré, en attente de validation. Vous serez prévenu sur WhatsApp.</p>
