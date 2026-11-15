@@ -6,7 +6,7 @@ import { persistPhotos } from "@/lib/photos";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
 const MAX_PHOTOS_PER_RUN = 40;
-import { configuredFeedUrls, feedShape, parseFeed, type FeedPost } from "@/lib/rss-feed";
+import { configuredFeedUrls, feedShape, parseFeed, tiktokHandle, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
 // Collecte des groupes Facebook, des profils d'agents et des comptes TikTok par flux rss.app (RSS_FEED_URLS).
@@ -69,8 +69,13 @@ async function handleCron(request: Request) {
   }
 
   const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, enriched: 0, imageText: 0, imageNoText: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  // Diagnostic TikTok : comptes enregistrés, et vidéos présentes dans les flux par compte.
+  const tiktokRegistered = new Set<string>();
+  const tiktokInFeeds: Record<string, number> = {};
   for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
-    const handle = t.tiktok_handle.replace(/^@/, "").toLowerCase();
+    const handle = tiktokHandle(t.tiktok_handle);
+    if (!handle) continue;
+    tiktokRegistered.add(handle);
     addSource(`tiktok:${handle}`, { id: t.id, userId: t.user_id, name: `@${handle}`, aiKey: t.profiles?.kimi_api_key ?? null });
   }
 
@@ -123,6 +128,10 @@ async function handleCron(request: Request) {
     for (const post of posts) {
       stats.posts++;
       const sourceKey = `${post.kind}:${post.sourceId.toLowerCase()}`;
+      if (post.kind === "tiktok") {
+        const handle = post.sourceId.toLowerCase();
+        tiktokInFeeds[handle] = (tiktokInFeeds[handle] || 0) + 1;
+      }
       const owners = sources.get(sourceKey);
       if (!owners?.length) {
         // Pour un profil, on ajoute le nom de l'auteur : c'est lui qu'il faut enregistrer comme agent.
@@ -243,5 +252,7 @@ async function handleCron(request: Request) {
     console.error("Photo copy failed:", error instanceof Error ? error.message : error);
   }
 
-  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, shapes, unknownSources, aiErrorMessages });
+  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, shapes, unknownSources, aiErrorMessages,
+    tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds },
+  });
 }

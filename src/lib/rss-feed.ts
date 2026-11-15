@@ -166,3 +166,16 @@ export function configuredFeedUrls(): string[] {
     .map((u) => u.trim())
     .filter((u) => /^https:\/\//.test(u));
 }
+
+/**
+ * Nom d'un compte TikTok tel qu'enregistré dans l'application, ramené à la forme du flux :
+ * sans « @ », sans lien, en minuscules. Accepte « @compte », « compte » ou le lien du profil.
+ *
+ * @example tiktokHandle("https://www.tiktok.com/@Immobilier241?lang=fr") // "immobilier241"
+ */
+export function tiktokHandle(value: string | null | undefined): string {
+  const raw = (value || "").trim();
+  const fromUrl = raw.match(/tiktok\.com\/@([\w.]+)/i);
+  const handle = fromUrl ? fromUrl[1] : raw.replace(/^@+/, "").split(/[/?\s]/)[0];
+  return /^[\w.]+$/.test(handle) ? handle.toLowerCase() : "";
+}

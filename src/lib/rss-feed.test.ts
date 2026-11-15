@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { configuredFeedUrls, parseFeed } from "./rss-feed";
+import { configuredFeedUrls, parseFeed, tiktokHandle } from "./rss-feed";
 
 const item = (overrides: Record<string, unknown> = {}) => ({
   id: "abc",
@@ -103,5 +103,15 @@ describe("configuredFeedUrls", () => {
   it("renvoie une liste vide sans configuration", () => {
     delete process.env.RSS_FEED_URLS;
     expect(configuredFeedUrls()).toEqual([]);
+  });
+});
+
+describe("nom de compte TikTok enregistré", () => {
+  it("accepte le nom, le nom avec @ ou le lien du profil", () => {
+    expect(tiktokHandle("@Jika.immo")).toBe("jika.immo");
+    expect(tiktokHandle("akd_imm241")).toBe("akd_imm241");
+    expect(tiktokHandle("https://www.tiktok.com/@Immobilier241?lang=fr")).toBe("immobilier241");
+    expect(tiktokHandle(" @1983baye_ ")).toBe("1983baye_");
+    expect(tiktokHandle("")).toBe("");
   });
 });
