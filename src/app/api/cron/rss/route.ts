@@ -6,7 +6,7 @@ import { persistPhotos } from "@/lib/photos";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
 const MAX_PHOTOS_PER_RUN = 40;
-import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
+import { configuredFeedUrls, feedShape, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
 // Collecte des groupes Facebook, des profils d'agents et des comptes TikTok par flux rss.app (RSS_FEED_URLS).
@@ -78,6 +78,7 @@ async function handleCron(request: Request) {
   const touchedAgents = new Set<string>();
   const touchedTiktok = new Set<string>();
   const feeds: { items: number; spanMinutes: number | null; possibleGap: boolean; error?: string }[] = [];
+  const shapes: ReturnType<typeof feedShape>[] = [];
   const touchedGroups = new Set<string>();
   // Messages d'erreur distincts de l'IA, avec leur nombre : sans eux un échec en série est illisible.
   const aiErrorMessages: Record<string, number> = {};
@@ -99,7 +100,10 @@ async function handleCron(request: Request) {
         signal: AbortSignal.timeout(FEED_TIMEOUT_MS),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      posts = parseFeed(await response.json());
+      const json = await response.json();
+      // Forme du flux (champs présents, longueurs), sans contenu : repère un flux qui tronque les textes.
+      shapes.push(feedShape(json));
+      posts = parseFeed(json);
     } catch (error) {
       // L'adresse du flux n'est pas journalisée : elle donne accès au flux à qui la connaît.
       feeds.push({ items: 0, spanMinutes: null, possibleGap: false, error: error instanceof Error ? error.message : "erreur" });
@@ -228,5 +232,5 @@ async function handleCron(request: Request) {
     console.error("Photo copy failed:", error instanceof Error ? error.message : error);
   }
 
-  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, unknownSources, aiErrorMessages });
+  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, shapes, unknownSources, aiErrorMessages });
 }

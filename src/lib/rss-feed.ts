@@ -29,6 +29,77 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+/**
+ * Texte lisible d'un fragment HTML : les sauts de ligne sont conservés, les balises retirées.
+ *
+ * @example htmlToText("<p>Prix : 450.000<br>GARDIEN</p>") // "Prix : 450.000\nGARDIEN"
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&([a-z]+);/gi, (whole: string, name: string) => ENTITIES[name.toLowerCase()] ?? whole)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Texte le plus complet d'un élément du flux.
+ * WHY: selon la publication, rss.app met tout le texte dans `content_text`, ou seulement sa
+ * première ligne (le titre mis en forme par Facebook) et le reste dans `content_html` ou `summary`.
+ * On retient la version la plus longue, et on replace le titre en tête s'il n'y figure pas.
+ */
+export function bestText(item: Record<string, unknown>): string {
+  const candidates = [asString(item.content_text), htmlToText(asString(item.content_html)), asString(item.summary), htmlToText(asString(item.description))]
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const body = candidates.sort((a, b) => b.length - a.length)[0] || "";
+  const title = asString(item.title).trim();
+  if (!title) return body;
+  if (!body) return title;
+  const head = title.slice(0, 40).toLowerCase();
+  return body.toLowerCase().includes(head) ? body : `${title}\n${body}`;
+}
+
+/**
+ * Forme d'un flux, sans aucun contenu : quels champs existent et lequel porte le texte le plus long.
+ * Sert à diagnostiquer un flux qui tronque les publications.
+ *
+ * @example feedShape(feed) // { items: 50, keys: ["content_html", …], htmlLonger: 12, shortText: 9, … }
+ */
+export function feedShape(feed: unknown) {
+  const items = (feed as { items?: unknown })?.items;
+  const list = Array.isArray(items) ? (items.filter((i) => i && typeof i === "object") as Record<string, unknown>[]) : [];
+  const keys = new Set<string>();
+  const shape = { items: list.length, keys: [] as string[], htmlLonger: 0, summaryLonger: 0, titleEqualsText: 0, shortText: 0, medianText: 0, medianBest: 0, attachments: 0 };
+  const textLengths: number[] = [];
+  const bestLengths: number[] = [];
+  for (const item of list) {
+    Object.keys(item).forEach((k) => keys.add(k));
+    const text = asString(item.content_text).trim();
+    const html = htmlToText(asString(item.content_html));
+    if (html.length > text.length + 20) shape.htmlLonger++;
+    if (asString(item.summary).trim().length > text.length + 20) shape.summaryLonger++;
+    if (text && text === asString(item.title).trim()) shape.titleEqualsText++;
+    if (text.length < 80) shape.shortText++;
+    if (Array.isArray(item.attachments) && item.attachments.length > 1) shape.attachments++;
+    textLengths.push(text.length);
+    bestLengths.push(bestText(item).length);
+  }
+  const median = (values: number[]) => (values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : 0);
+  shape.keys = Array.from(keys).sort();
+  shape.medianText = median(textLengths);
+  shape.medianBest = median(bestLengths);
+  return shape;
+}
+
 function locate(url: string): Pick<FeedPost, "kind" | "sourceId" | "postId"> | null {
   const tiktok = url.match(TIKTOK_POST);
   // WHY: même forme d'identifiant que la collecte TikTok historique, pour ne pas recréer ses annonces.
@@ -78,7 +149,7 @@ export function parseFeed(feed: unknown): FeedPost[] {
       ...location,
       url,
       author: asString(authors[0]?.name) || null,
-      text: asString(item.content_text).trim(),
+      text: bestText(item),
       images: Array.from(new Set(images)),
       publishedAt: Number.isNaN(time) ? null : new Date(time).toISOString(),
     });
