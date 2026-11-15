@@ -15,6 +15,7 @@ const DOUBT_LABELS: Record<string, string> = {
   transaction: "Location ou vente non précisée",
   type: "Type de bien non précisé",
   chambres: "Nombre de chambres non précisé",
+  contenu: "Annonce trop peu précise",
 };
 
 export interface SendKey {

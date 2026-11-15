@@ -23,7 +23,8 @@ Ne déduis pas la ville d'un quartier. N'utilise aucune connaissance extérieure
 
 Champs :
 - est_immobilier (boolean) : le TEXTE LUI-MÊME propose-t-il ou recherche-t-il un bien immobilier
-  (logement, terrain, local) ? false pour une voiture, un emploi, une formation, un vêtement, un
+  (logement, terrain, local) ? false pour une voiture, un emploi, une formation, un vêtement, des
+  articles, meubles ou marchandises à vendre (« choisissez l'article », « faites votre prix »), un
   fonds de commerce sans local, une vidéo ou une publicité sans rapport, même publiée dans un groupe immobilier.
 - hors_gabon (boolean) : true seulement si le texte situe explicitement le bien hors du Gabon
   (ex. Abidjan, Douala, Dakar au Sénégal). Attention : Libreville a des quartiers nommés Dakar, London,

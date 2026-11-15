@@ -140,6 +140,12 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
     }
   }
 
+  // Annonce presque vide : moins de deux informations parmi type de bien, prix et quartier.
+  // WHY: elle ne contredit aucun critère, donc elle passerait chez tous les clients (cas d'une
+  // vente d'articles prise pour de l'immobilier). Un humain la relit avant tout envoi.
+  const known = [annonce.type_bien, annonce.prix, annonce.quartier].filter(Boolean).length;
+  if (known < 2) uncertain.push("contenu");
+
   // ---------- 2. Score des préférences ----------
   let weightSum = 0;
   let earned = 0;
@@ -209,7 +215,7 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
   // Type ou nombre de chambres inconnus : l'annonce reste éligible, mais passe après les autres.
   score -= UNCERTAIN_PENALTY * uncertain.filter((u) => u === "type" || u === "chambres").length;
 
-  const needsReview = uncertain.some((u) => u === "prix" || u === "ville" || u === "transaction");
+  const needsReview = uncertain.some((u) => u === "prix" || u === "ville" || u === "transaction" || u === "contenu");
 
   return {
     eligible: blockedBy.length === 0,

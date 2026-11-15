@@ -51,6 +51,19 @@ describe("critères bloquants", () => {
     expect(shouldSend(m, demand())).toBe(true);
   });
 
+  it("retient pour vérification une annonce presque vide, même sans critère contredit", () => {
+    // Cas réel : vente d'articles classée immobilière, client « vente » sans autre critère.
+    const d = demand({ filter_type_offre: ["vente"], filter_type_bien: [], filter_prix_max: null, filter_nb_chambres_min: null });
+    const vide = annonce({ type_offre: "vente", type_bien: null, prix: null, quartier: null, nb_chambres: null });
+    const m = matchDemand(vide, d);
+    expect(m.needsReview).toBe(true);
+    expect(m.uncertain).toContain("contenu");
+    expect(shouldSend(m, d)).toBe(false);
+
+    const complete = annonce({ type_offre: "vente", type_bien: "maison", prix: 70000000, quartier: null, nb_chambres: 4 });
+    expect(matchDemand(complete, d).uncertain).not.toContain("contenu");
+  });
+
   it("accepte un bureau pour un client qui cherche un commerce, pas l'inverse", () => {
     const commerce = demand({ filter_type_bien: ["commerce"], filter_nb_chambres_min: null });
     expect(matchDemand(annonce({ type_bien: "bureau", nb_chambres: null }), commerce).blockedBy).not.toContain("type");
