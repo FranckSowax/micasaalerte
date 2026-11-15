@@ -45,7 +45,24 @@ export function checkDevice(storedHash: string | null | undefined, deviceId: str
   return "other_device";
 }
 
+const LOCAL_URL = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i;
+
+/**
+ * Adresse publique du site, utilisée dans les liens envoyés aux clients.
+ * WHY: une adresse locale (valeur d'exemple restée en production) donnerait un lien
+ * inutilisable sur le téléphone du client ; on se rabat alors sur le domaine Railway.
+ *
+ * @example publicBaseUrl({ NEXT_PUBLIC_APP_URL: "http://localhost:3000", RAILWAY_PUBLIC_DOMAIN: "x.up.railway.app" })
+ * // "https://x.up.railway.app"
+ */
+export function publicBaseUrl(env: Record<string, string | undefined> = process.env): string {
+  const configured = (env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/+$/, "");
+  if (configured && !LOCAL_URL.test(configured)) return configured;
+  const domain = (env.RAILWAY_PUBLIC_DOMAIN || "").trim();
+  return domain ? `https://${domain}` : configured;
+}
+
 /** Adresse de l'espace client pour un jeton. */
-export function clientLink(token: string, baseUrl = process.env.NEXT_PUBLIC_APP_URL || ""): string {
+export function clientLink(token: string, baseUrl = publicBaseUrl()): string {
   return `${baseUrl.replace(/\/+$/, "")}/c/${token}`;
 }

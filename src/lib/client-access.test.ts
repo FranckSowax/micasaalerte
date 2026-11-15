@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDevice, clientLink, generateAccessToken, generateDeviceId, hashDevice, isValidToken } from "./client-access";
+import { checkDevice, clientLink, generateAccessToken, generateDeviceId, hashDevice, isValidToken, publicBaseUrl } from "./client-access";
 
 describe("jeton d'accès", () => {
   it("est long, aléatoire et utilisable dans une adresse", () => {
@@ -16,6 +16,23 @@ describe("jeton d'accès", () => {
 
   it("construit le lien sans double barre oblique", () => {
     expect(clientLink("abc", "https://exemple.test/")).toBe("https://exemple.test/c/abc");
+  });
+});
+
+describe("adresse publique du site", () => {
+  it("garde l'adresse configurée quand elle est publique", () => {
+    expect(publicBaseUrl({ NEXT_PUBLIC_APP_URL: "https://alerte.exemple.test/", RAILWAY_PUBLIC_DOMAIN: "x.up.railway.app" })).toBe(
+      "https://alerte.exemple.test"
+    );
+  });
+
+  it("remplace une adresse locale ou absente par le domaine Railway", () => {
+    expect(publicBaseUrl({ NEXT_PUBLIC_APP_URL: "http://localhost:3000", RAILWAY_PUBLIC_DOMAIN: "x.up.railway.app" })).toBe("https://x.up.railway.app");
+    expect(publicBaseUrl({ RAILWAY_PUBLIC_DOMAIN: "x.up.railway.app" })).toBe("https://x.up.railway.app");
+  });
+
+  it("laisse l'adresse locale en développement, sans domaine Railway", () => {
+    expect(publicBaseUrl({ NEXT_PUBLIC_APP_URL: "http://localhost:3000" })).toBe("http://localhost:3000");
   });
 });
 
