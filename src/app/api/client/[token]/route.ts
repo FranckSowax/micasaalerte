@@ -1,11 +1,12 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { matchDemand } from "@/lib/matching";
+import { DEFAULT_MAX_ALERTS_PER_DAY, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "@/lib/matching";
 import { MAX_PER_ANNONCE } from "@/lib/photos";
-import { doubtLabels } from "@/lib/review";
+import { annonceVersion, doubtLabels } from "@/lib/review";
 import type { Annonce, ClientDemand } from "@/types/database";
 import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
+import type { createServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -18,9 +19,13 @@ export const dynamic = "force-dynamic";
 
 const MAX_ANNONCES = 200;
 
+/** Avis de l'abonné sur une annonce : pertinente, ou la raison pour laquelle elle ne l'est pas. */
+const FEEDBACK = ["pertinente", "prix", "quartier", "type", "equipement", "indisponible", "arnaque"] as const;
+
 const ActionSchema = z.object({
   annonceId: z.string().uuid(),
   action: z.enum(["keep", "remove", "reset"]),
+  feedback: z.enum(FEEDBACK).optional(),
 });
 
 const STATUS_BY_ACTION = { keep: "kept", remove: "removed", reset: "new" } as const;
@@ -56,13 +61,19 @@ export async function GET(request: Request, { params }: { params: { token: strin
     // Une annonce renvoyée après un changement de prix n'apparaît qu'une fois, à sa version la plus récente.
     if (!annonce || seen.has(annonce.id as string)) continue;
     seen.add(annonce.id as string);
+    const match = matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand);
+    const clientStatus = (send.client_status as string) || "new";
+    // Critères modifiés : une annonce encore « à trier » qui ne correspond plus n'est plus proposée.
+    // Celles que l'abonné a retenues ou supprimées restent visibles : c'est son propre tri.
+    if (clientStatus === "new" && !match.eligible) continue;
     const point = locateAnnonce(annonce as Parameters<typeof locateAnnonce>[0]);
     items.push({
       id: annonce.id,
-      status: (send.client_status as string) || "new",
+      status: clientStatus,
+      feedback: (send.client_feedback as string | null | undefined) ?? null,
       // Informations manquantes à vérifier auprès de l'annonceur (onglet « À vérifier »),
       // recalculées avec les critères actuels de l'abonné.
-      doubts: doubtLabels(matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand).decisiveDoubts),
+      doubts: doubtLabels(match.decisiveDoubts),
       sentAt: send.sent_at,
       typeOffre: annonce.type_offre,
       typeBien: annonce.type_bien,
@@ -150,11 +161,15 @@ export async function POST(request: Request, { params }: { params: { token: stri
   const parsed = ActionSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Action invalide" }, { status: 400 });
 
-  const { error } = await supabase
-    .from("client_demand_sends")
-    .update({ client_status: STATUS_BY_ACTION[parsed.data.action], decided_at: new Date().toISOString() })
-    .eq("demand_id", demand.id as string)
-    .eq("annonce_id", parsed.data.annonceId);
+  const decision = { client_status: STATUS_BY_ACTION[parsed.data.action], decided_at: new Date().toISOString() };
+  // « Remettre à trier » efface l'avis ; sinon on enregistre celui qui accompagne la décision.
+  const feedback = parsed.data.action === "reset" ? null : (parsed.data.feedback ?? null);
+  const save = (row: Record<string, unknown>) =>
+    supabase.from("client_demand_sends").update(row).eq("demand_id", demand.id as string).eq("annonce_id", parsed.data.annonceId);
+
+  let { error } = await save({ ...decision, client_feedback: feedback });
+  // Colonne client_feedback absente (script SQL pas encore relancé) : la décision est enregistrée sans l'avis.
+  if (error) ({ error } = await save(decision));
 
   if (error) {
     console.error("Client action failed:", error.message);
@@ -174,8 +189,8 @@ export async function PATCH(request: Request, { params }: { params: { token: str
     return NextResponse.json({ error: CRITERIA_FIELD_MESSAGES[field] || "Critères invalides" }, { status: 400 });
   }
 
-  // Les annonces déjà reçues restent dans l'espace ; les nouveaux critères s'appliquent
-  // aux prochains envois.
+  // Les annonces retenues ou supprimées restent en place. Celles « à trier » qui ne correspondent
+  // plus disparaissent de la liste (voir GET), et une nouvelle sélection est proposée tout de suite.
   const { filters, zone } = criteriaToRow(parsed.data);
   const { error } = await supabase
     .from("client_demands")
@@ -186,5 +201,53 @@ export async function PATCH(request: Request, { params }: { params: { token: str
     console.error("Client criteria update failed:", error.message);
     return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
-  return withDeviceCookie(NextResponse.json({ success: true }), newDeviceId);
+
+  const added = await refreshSelection(supabase, { ...demand, ...filters, ...zone } as unknown as ClientDemand);
+  return withDeviceCookie(NextResponse.json({ success: true, added }), newDeviceId);
+}
+
+/**
+ * Nouvelle sélection juste après un changement de critères : les annonces récentes qui correspondent
+ * sont ajoutées à l'espace sans attendre le prochain passage horaire, et sans message WhatsApp
+ * (l'abonné est déjà sur la page). Mêmes règles que le cron : pas de doublon, plafond quotidien.
+ */
+async function refreshSelection(supabase: ReturnType<typeof createServiceClient>, demand: ClientDemand): Promise<number> {
+  const now = new Date();
+  if (subscriptionState(demand, now).status === "expired") return 0;
+
+  const [{ data: rows }, { data: sends }] = await Promise.all([
+    supabase
+      .from("annonces")
+      .select("*")
+      .eq("user_id", demand.user_id)
+      .eq("ai_is_real_estate", true)
+      .neq("status", "archived")
+      .order("created_at", { ascending: false })
+      .limit(MAX_ANNONCES),
+    supabase.from("client_demand_sends").select("*").eq("demand_id", demand.id),
+  ]);
+
+  const known = new Set(((sends || []) as Row[]).map((s) => `${s.annonce_id}:${s.annonce_version ?? 1}`));
+  const dayStart = startOfLocalDayIso(now);
+  const addedToday = ((sends || []) as Row[]).filter((s) => s.status !== "failed" && typeof s.sent_at === "string" && s.sent_at >= dayStart).length;
+  const cap = Math.max(demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY, DEFAULT_MAX_ALERTS_PER_DAY);
+
+  const candidates: { annonce: Annonce; score: number }[] = [];
+  for (const annonce of (rows || []) as unknown as Annonce[]) {
+    if (known.has(`${annonce.id}:${annonceVersion(annonce)}`)) continue;
+    const match = matchDemand(annonce, demand);
+    if (shouldSend(match, demand) || shouldSendForCheck(match, demand)) candidates.push({ annonce, score: match.score });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  let added = 0;
+  for (const { annonce } of candidates.slice(0, Math.max(0, cap - addedToday))) {
+    const row = { demand_id: demand.id, annonce_id: annonce.id, message_id: "criteria_refresh", status: "sent" };
+    const version = annonceVersion(annonce);
+    let { error } = version === 1 ? await supabase.from("client_demand_sends").insert(row) : await supabase.from("client_demand_sends").insert({ ...row, annonce_version: version });
+    // Base sans la colonne annonce_version : on enregistre quand même.
+    if (error && version !== 1) ({ error } = await supabase.from("client_demand_sends").insert(row));
+    if (!error) added++;
+  }
+  return added;
 }

@@ -594,6 +594,11 @@ ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS access_token TEXT;
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS device_hash TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_client_demands_access_token ON client_demands(access_token);
 
+-- Avis de l'abonné sur une annonce : pertinente, ou la raison du refus
+-- (prix, quartier, type, equipement, indisponible, arnaque). Sert à améliorer le matching
+-- et à repérer les annonces obsolètes ou frauduleuses.
+ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS client_feedback TEXT;
+
 -- Tri fait par le client sur chaque annonce reçue : à trier, retenue, supprimée
 ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS client_status TEXT DEFAULT 'new';
 ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;

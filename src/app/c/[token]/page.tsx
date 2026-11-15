@@ -5,7 +5,7 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, ExternalLink, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
@@ -128,6 +128,8 @@ interface ClientAnnonce {
   status: ClientStatus;
   /** Informations manquantes, en clair (ex. « Prix non indiqué »). */
   doubts?: string[];
+  /** Avis donné par l'abonné (pertinente, ou la raison du refus). */
+  feedback?: string | null;
   sentAt: string | null;
   typeOffre: string | null;
   typeBien: string | null;
@@ -199,14 +201,30 @@ interface ClientSpace {
   annonces: ClientAnnonce[];
 }
 
+/** Raisons proposées après « Pas pertinente ». */
+const REFUSAL_REASONS = [
+  { id: "prix", label: "Le prix" },
+  { id: "quartier", label: "Le quartier" },
+  { id: "type", label: "Le type de bien" },
+  { id: "equipement", label: "Les équipements" },
+];
+const FEEDBACK_LABELS: Record<string, string> = {
+  prix: "le prix ne convient pas",
+  quartier: "le quartier ne convient pas",
+  type: "le type de bien ne convient pas",
+  equipement: "les équipements ne conviennent pas",
+  indisponible: "bien déjà loué ou vendu",
+  arnaque: "annonce signalée comme arnaque",
+};
+
 /** Onglet d'une annonce : une annonce non triée avec un doute va dans « À vérifier ». */
 const tabOf = (a: ClientAnnonce): Tab => (a.status === "new" && a.doubts?.length ? "check" : a.status);
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "À trier" },
   { key: "check", label: "À vérifier" },
-  { key: "kept", label: "Retenues" },
-  { key: "removed", label: "Supprimées" },
+  { key: "kept", label: "Pertinentes" },
+  { key: "removed", label: "Écartées" },
 ];
 
 /** Espace personnel d'un client : ses annonces, à contacter et à trier. */
@@ -221,6 +239,8 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   const [reference, setReference] = useState("");
   const [plan, setPlan] = useState("day");
   const [leaving, setLeaving] = useState(false);
+  // Annonce pour laquelle l'abonné choisit la raison de « Pas pertinente ».
+  const [reasonFor, setReasonFor] = useState<string | null>(null);
 
   // Déconnexion : l'appareil n'est plus lié à l'espace ; retour par le lien WhatsApp ou par un code.
   const logout = async () => {
@@ -258,18 +278,19 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
     load();
   }, [load]);
 
-  const act = async (annonceId: string, action: "keep" | "remove" | "reset") => {
+  const act = async (annonceId: string, action: "keep" | "remove" | "reset", feedback?: string) => {
     if (!space) return;
     setBusy(annonceId);
+    setReasonFor(null);
     const next: ClientStatus = action === "keep" ? "kept" : action === "remove" ? "removed" : "new";
     const previous = space;
     // Mise à jour immédiate à l'écran, annulée si l'enregistrement échoue.
-    setSpace({ ...space, annonces: space.annonces.map((a) => (a.id === annonceId ? { ...a, status: next } : a)) });
+    setSpace({ ...space, annonces: space.annonces.map((a) => (a.id === annonceId ? { ...a, status: next, feedback: action === "reset" ? null : feedback ?? null } : a)) });
     try {
       const res = await fetch(`/api/client/${params.token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annonceId, action }),
+        body: JSON.stringify({ annonceId, action, ...(feedback ? { feedback } : {}) }),
       });
       if (!res.ok) setSpace(previous);
     } catch {
@@ -300,7 +321,15 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
       });
       if (res.ok) {
         setPanel("none");
-        setNotice({ ok: true, text: "Critères enregistrés. Ils s'appliquent aux prochaines annonces." });
+        const data = await res.json().catch(() => ({}));
+        const added = typeof data.added === "number" ? data.added : 0;
+        setNotice({
+          ok: true,
+          text: added > 0
+            ? `Critères enregistrés. ${added} annonce${added > 1 ? "s correspondent" : " correspond"} déjà à votre nouvelle recherche.`
+            : "Critères enregistrés. Aucune annonce récente ne correspond pour l'instant : les prochaines arriveront sur WhatsApp.",
+        });
+        setTab("new");
         await load();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -558,8 +587,8 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
                 : tab === "check"
                   ? "Aucune annonce à vérifier. Ici arrivent les annonces qui correspondent à votre recherche mais à qui il manque une information, comme le prix."
                 : tab === "kept"
-                  ? "Vous n'avez encore retenu aucune annonce."
-                  : "Aucune annonce supprimée."}
+                  ? "Vous n'avez encore marqué aucune annonce comme pertinente."
+                  : "Aucune annonce écartée."}
             </CardContent>
           </Card>
         ) : (
@@ -609,24 +638,46 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
-                    {a.status === "kept" ? (
-                      <Button variant="outline" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
-                        <RotateCcw className="h-4 w-4 mr-1" /> Remettre à trier
-                      </Button>
-                    ) : (
-                      <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={() => act(a.id, "keep")} disabled={busy === a.id}>
-                        <Check className="h-4 w-4 mr-1" /> Conserver
-                      </Button>
+                  <div className="pt-3 border-t border-border space-y-3">
+                    {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] && (
+                      <p className="text-sm text-muted-foreground">Votre avis : {FEEDBACK_LABELS[a.feedback]}</p>
                     )}
-                    {a.status === "removed" ? (
-                      <Button variant="outline" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
-                        <RotateCcw className="h-4 w-4 mr-1" /> Restaurer
+
+                    {a.status !== "new" ? (
+                      <Button variant="outline" className="w-full min-h-[48px]" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
+                        <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre à trier" : "Restaurer"}
                       </Button>
+                    ) : reasonFor === a.id ? (
+                      <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
+                        <p className="text-sm font-semibold">Qu&apos;est-ce qui ne convient pas ?</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {REFUSAL_REASONS.map((reason) => (
+                            <Button key={reason.id} variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", reason.id)} disabled={busy === a.id}>
+                              {reason.label}
+                            </Button>
+                          ))}
+                        </div>
+                        <Button variant="ghost" className="w-full min-h-[44px]" onClick={() => setReasonFor(null)}>Annuler</Button>
+                      </div>
                     ) : (
-                      <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => act(a.id, "remove")} disabled={busy === a.id}>
-                        <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-                      </Button>
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button className="min-h-[48px] bg-green-600 hover:bg-green-700 text-white" onClick={() => act(a.id, "keep", "pertinente")} disabled={busy === a.id}>
+                            <ThumbsUp className="h-4 w-4 mr-1" /> Pertinente
+                          </Button>
+                          <Button className="min-h-[48px] bg-red-600 hover:bg-red-700 text-white" onClick={() => setReasonFor(a.id)} disabled={busy === a.id}>
+                            <ThumbsDown className="h-4 w-4 mr-1" /> Pas pertinente
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", "indisponible")} disabled={busy === a.id}>
+                            Déjà loué ou vendu
+                          </Button>
+                          <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", "arnaque")} disabled={busy === a.id}>
+                            <Flag className="h-4 w-4 mr-1" /> Signaler une arnaque
+                          </Button>
+                        </div>
+                      </>
                     )}
                   </div>
                 </CardContent>
