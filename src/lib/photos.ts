@@ -8,7 +8,8 @@ import type { createServiceClient } from "@/lib/supabase/server";
 export const PHOTO_BUCKET = "annonces";
 const MAX_BYTES = 6 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;
-const MAX_PER_ANNONCE = 2;
+/** Photos conservées par annonce : assez pour une galerie, sans copier un album entier. */
+export const MAX_PER_ANNONCE = 6;
 const RECENT_ANNONCES = 300;
 /** Après ce nombre d'échecs réseau, on cesse de réessayer un lien jusqu'au prochain redémarrage. */
 const MAX_ATTEMPTS = 3;

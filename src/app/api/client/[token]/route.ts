@@ -1,6 +1,7 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
+import { MAX_PER_ANNONCE } from "@/lib/photos";
 import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -67,6 +68,10 @@ export async function GET(request: Request, { params }: { params: { token: strin
       meuble: annonce.meuble,
       resume: annonce.ai_summary,
       image: Array.isArray(annonce.raw_images) ? (annonce.raw_images[0] ?? null) : null,
+      // Toutes les photos collectées (6 au plus), pour la galerie.
+      images: Array.isArray(annonce.raw_images)
+        ? (annonce.raw_images as unknown[]).filter((u): u is string => typeof u === "string" && u.startsWith("https://")).slice(0, MAX_PER_ANNONCE)
+        : [],
       postUrl: annonce.fb_post_url,
       source: String(annonce.fb_post_id || "").startsWith("tiktok_") ? "tiktok" : "facebook",
       telephone: digits(annonce.telephone),

@@ -5,7 +5,7 @@ import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending } fr
 import { persistPhotos } from "@/lib/photos";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
-const MAX_PHOTOS_PER_RUN = 25;
+const MAX_PHOTOS_PER_RUN = 40;
 import { configuredFeedUrls, parseFeed, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 

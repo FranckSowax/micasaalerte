@@ -15,6 +15,56 @@ import { formatDate, formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/
 // Même police et même thème clair que l'inscription : l'abonné ne change pas d'univers.
 const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallback: false });
 
+/**
+ * Photos d'une annonce. Plusieurs photos : galerie à faire glisser horizontalement, avec un
+ * compteur. Une photo qui ne charge plus (lien expiré) est retirée sans laisser de trou.
+ */
+function PhotoGallery({ photos }: { photos: string[] }) {
+  const [broken, setBroken] = useState<string[]>([]);
+  const [index, setIndex] = useState(0);
+  const shown = photos.filter((p) => !broken.includes(p));
+  if (!shown.length) return null;
+
+  return (
+    <div className="relative bg-muted">
+      <div
+        className="flex overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="group"
+        aria-label={shown.length > 1 ? `${shown.length} photos de l'annonce, faites glisser pour les voir` : "Photo de l'annonce"}
+        tabIndex={shown.length > 1 ? 0 : -1}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setIndex(Math.round(el.scrollLeft / Math.max(1, el.clientWidth)));
+        }}
+      >
+        {shown.map((src, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={src}
+            src={src}
+            alt={`Photo ${i + 1} sur ${shown.length}`}
+            className="w-full h-56 shrink-0 snap-center object-cover"
+            loading="lazy"
+            onError={() => setBroken((list) => (list.includes(src) ? list : [...list, src]))}
+          />
+        ))}
+      </div>
+      {shown.length > 1 && (
+        <>
+          <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-bold text-white" aria-hidden="true">
+            {Math.min(index, shown.length - 1) + 1} / {shown.length}
+          </span>
+          <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1.5" aria-hidden="true">
+            {shown.map((src, i) => (
+              <span key={src} className={`h-2 w-2 rounded-full ${i === index ? "bg-white" : "bg-white/50"} shadow`} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 type ClientStatus = "new" | "kept" | "removed";
 
 interface ClientAnnonce {
@@ -31,6 +81,7 @@ interface ClientAnnonce {
   meuble: boolean | null;
   resume: string | null;
   image: string | null;
+  images?: string[];
   postUrl: string | null;
   source: "facebook" | "tiktok";
   telephone: string | null;
@@ -443,10 +494,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           <div className="space-y-4">
             {visible.map((a) => (
               <Card key={a.id} className="overflow-hidden">
-                {a.image && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.image} alt="" className="w-full h-48 object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                )}
+                <PhotoGallery photos={a.images?.length ? a.images : a.image ? [a.image] : []} />
                 <CardContent className="p-4 space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {a.typeOffre && <Badge>{getTypeOffreLabel(a.typeOffre)}</Badge>}
