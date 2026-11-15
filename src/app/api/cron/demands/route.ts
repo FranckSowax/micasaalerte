@@ -60,11 +60,26 @@ async function handleCron(request: Request) {
   const dayStart = startOfLocalDayIso(now);
   // Test manuel : `?quiet=off` ignore la plage silencieuse pour ce passage (toujours avec le secret du cron).
   const ignoreQuiet = new URL(request.url).searchParams.get("quiet") === "off";
+  const resendLink = new URL(request.url).searchParams.get("resend") === "on";
 
   const { data: demands } = await supabase.from("client_demands").select("*").eq("is_active", true);
 
   if (!demands?.length) {
     return NextResponse.json({ message: "No active demands" });
+  }
+
+  // Test manuel : `?resend=on` renvoie simplement son lien au client, sans nouvelle annonce.
+  // WHY: réservé à une base à un seul client actif, pour ne jamais écrire à tous les abonnés.
+  if (resendLink) {
+    if (demands.length > 1) return NextResponse.json({ error: "resend refusé : plusieurs clients actifs" }, { status: 409 });
+    const demand = demands[0] as unknown as ClientDemand;
+    const token = await ensureToken(supabase, demand);
+    if (!token) return NextResponse.json({ error: "Migration SQL requise" }, { status: 500 });
+    const sent = await sendWhatsAppMessage(
+      demand.client_phone,
+      formatClientLinkMessage({ name: demand.client_name, link: clientLink(token), resend: true })
+    );
+    return NextResponse.json({ success: sent.success, linksResent: sent.success ? 1 : 0 }, { status: sent.success ? 200 : 502 });
   }
 
   const byUser = new Map<string, ClientDemand[]>();

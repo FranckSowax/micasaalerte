@@ -36,11 +36,13 @@ export function formatDigestMessage(annonces: Annonce[]): string {
  *
  * @example formatClientLinkMessage({ name: "Awa", count: 3, link })
  */
-export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean }): string {
+export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean; resend?: boolean }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
   const lines = ["*Mi Casa Alerte*", "", hello];
   if (params.renewed) {
     lines.push("Voici votre nouveau lien personnel. L'ancien ne fonctionne plus.");
+  } else if (params.resend) {
+    lines.push("Voici le lien de votre espace personnel.");
   } else {
     const n = params.count || 0;
     lines.push(n > 1 ? `${n} nouvelles annonces correspondent à votre recherche.` : "Une nouvelle annonce correspond à votre recherche.");
