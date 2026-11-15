@@ -1,6 +1,6 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { checkRateLimit } from "@/lib/request-limit";
-import { SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
+import { findPlan, PLAN_IDS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,6 +14,8 @@ const HOUR_MS = 60 * 60_000;
 
 const PaymentSchema = z.object({
   reference: z.string().trim().min(4).max(60),
+  // Formule choisie : 1 jour, 7 jours ou 30 jours.
+  plan: z.enum(PLAN_IDS).default("day"),
 });
 
 export async function POST(request: Request, { params }: { params: { token: string } }) {
@@ -40,14 +42,19 @@ export async function POST(request: Request, { params }: { params: { token: stri
     .limit(1)
     .maybeSingle();
 
-  // Une seule déclaration en attente par client : une nouvelle saisie corrige la référence.
+  const plan = findPlan(parsed.data.plan);
+
+  // Une seule déclaration en attente par client : une nouvelle saisie corrige la référence et la formule.
   const { error } = pending
-    ? await supabase.from("subscription_payments").update({ reference: parsed.data.reference }).eq("id", pending.id)
+    ? await supabase
+        .from("subscription_payments")
+        .update({ reference: parsed.data.reference, amount: plan.price, days: plan.days })
+        .eq("id", pending.id)
     : await supabase.from("subscription_payments").insert({
         demand_id: demandId,
         user_id: demand.user_id as string,
-        amount: SUBSCRIPTION_PRICE_FCFA,
-        days: SUBSCRIPTION_DAYS,
+        amount: plan.price,
+        days: plan.days,
         reference: parsed.data.reference,
         status: "pending",
       });

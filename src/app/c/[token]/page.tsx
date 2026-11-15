@@ -40,6 +40,7 @@ interface Subscription {
   endsAt: string | null;
   price: number;
   days: number;
+  plans?: { id: string; label: string; price: number; days: number; note?: string }[];
   trialHours: number;
   paymentInfo: string | null;
   pendingPayment: boolean;
@@ -97,6 +98,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   const [panel, setPanel] = useState<"none" | "criteria" | "payment">("none");
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
   const [reference, setReference] = useState("");
+  const [plan, setPlan] = useState("day");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -174,7 +176,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
       const res = await fetch(`/api/client/${params.token}/payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference }),
+        body: JSON.stringify({ reference, plan }),
       });
       if (res.ok) {
         setPanel("none");
@@ -289,7 +291,9 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
         {space.subscription && (() => {
           const sub = space.subscription;
-          const price = `${sub.price.toLocaleString("fr-FR")} FCFA pour ${sub.days} jours`;
+          const plans = sub.plans?.length ? sub.plans : [{ id: "day", label: `${sub.days} jours`, price: sub.price, days: sub.days }];
+          const chosen = plans.find((p) => p.id === plan) || plans[0];
+          const price = `abonnement à partir de ${plans[0].price.toLocaleString("fr-FR")} FCFA`;
           const until = sub.endsAt ? formatDate(sub.endsAt) : null;
           return (
             <Card className={sub.status === "expired" ? "border-red-500/50" : ""}>
@@ -320,10 +324,27 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
                 {panel === "payment" && (
                   <div className="space-y-3 pt-3 border-t border-border">
-                    <p className="text-sm font-medium">{price}</p>
+                    <p className="text-sm font-medium">Choisissez votre formule :</p>
+                    <div className="grid gap-2">
+                      {plans.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          aria-pressed={p.id === chosen.id}
+                          onClick={() => setPlan(p.id)}
+                          className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm text-left transition-colors ${p.id === chosen.id ? "border-primary bg-primary/10" : "border-input hover:bg-accent"}`}
+                        >
+                          <span>
+                            <span className="font-medium">{p.label}</span>
+                            {p.note && <span className="block text-xs text-muted-foreground">{p.note}</span>}
+                          </span>
+                          <span className="font-bold whitespace-nowrap">{p.price.toLocaleString("fr-FR")} FCFA</span>
+                        </button>
+                      ))}
+                    </div>
                     <p className="text-sm text-muted-foreground whitespace-pre-line">
                       {sub.paymentInfo
-                        ? `1. Envoyez ${sub.price.toLocaleString("fr-FR")} FCFA par Mobile Money :\n${sub.paymentInfo}\n2. Saisissez ci-dessous la référence de la transaction reçue par SMS.`
+                        ? `1. Envoyez ${chosen.price.toLocaleString("fr-FR")} FCFA par Mobile Money :\n${sub.paymentInfo}\n2. Saisissez ci-dessous la référence de la transaction reçue par SMS.`
                         : "Contactez votre agent pour régler l'abonnement, puis saisissez ci-dessous la référence de la transaction."}
                     </p>
                     <Input placeholder="Référence de la transaction" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={60} />

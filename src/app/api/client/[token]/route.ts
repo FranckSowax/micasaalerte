@@ -1,7 +1,7 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
+import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -106,6 +106,7 @@ export async function GET(request: Request, { params }: { params: { token: strin
         endsAt: state.endsAt,
         price: SUBSCRIPTION_PRICE_FCFA,
         days: SUBSCRIPTION_DAYS,
+        plans: SUBSCRIPTION_PLANS,
         trialHours: TRIAL_HOURS,
         paymentInfo: paymentInfo(),
         pendingPayment: !!pending?.length,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extendPaidUntil, needsExpiryNotice, subscriptionState } from "./subscription";
+import { extendPaidUntil, findPlan, needsExpiryNotice, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "./subscription";
 
 const NOW = new Date("2026-11-15T12:00:00Z");
 const hours = (h: number) => new Date(NOW.getTime() + h * 3_600_000).toISOString();
@@ -56,5 +56,32 @@ describe("needsExpiryNotice", () => {
 
   it("prévient à nouveau après un renouvellement lui aussi expiré", () => {
     expect(needsExpiryNotice({ trial_ends_at: hours(-100), paid_until: hours(-1), expiry_notified_at: hours(-70) }, NOW)).toBe(true);
+  });
+});
+
+describe("formules d'abonnement", () => {
+  it("propose 1 jour, 7 jours et 30 jours aux tarifs annoncés", () => {
+    expect(SUBSCRIPTION_PLANS.map((p) => [p.id, p.price])).toEqual([
+      ["day", 1000],
+      ["week", 5000],
+      ["month", 15000],
+    ]);
+    expect(findPlan("week").days).toBe(7);
+    expect(findPlan("month").days).toBe(30);
+  });
+
+  it("accorde 48 h pour la formule 1 jour pendant la promo de lancement", () => {
+    expect(findPlan("day").days).toBe(2);
+    expect(planOffer(findPlan("day"))).toBe("1 jour : 1 000 FCFA (promo de lancement : 48 h)");
+    expect(planOffer(findPlan("month"))).toBe("30 jours : 15 000 FCFA");
+  });
+
+  it("retombe sur la formule 1 jour pour un identifiant inconnu", () => {
+    expect(findPlan("inconnu").id).toBe("day");
+    expect(findPlan(null).id).toBe("day");
+  });
+
+  it("ajoute les jours de la formule choisie", () => {
+    expect(extendPaidUntil({ trial_ends_at: hours(-10), paid_until: null }, NOW, findPlan("week").days)).toBe(hours(7 * 24));
   });
 });

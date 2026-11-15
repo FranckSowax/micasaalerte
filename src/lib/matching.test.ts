@@ -51,6 +51,13 @@ describe("critères bloquants", () => {
     expect(shouldSend(m, demand())).toBe(true);
   });
 
+  it("accepte un bureau pour un client qui cherche un commerce, pas l'inverse", () => {
+    const commerce = demand({ filter_type_bien: ["commerce"], filter_nb_chambres_min: null });
+    expect(matchDemand(annonce({ type_bien: "bureau", nb_chambres: null }), commerce).blockedBy).not.toContain("type");
+    expect(matchDemand(annonce({ type_bien: "commerce", nb_chambres: null }), commerce).blockedBy).not.toContain("type");
+    expect(matchDemand(annonce({ type_bien: "bureau" }), demand()).blockedBy).toContain("type");
+  });
+
   it.each([
     ["transaction", { type_offre: "vente" }],
     ["type", { type_bien: "terrain" }],

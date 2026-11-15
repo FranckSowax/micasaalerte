@@ -126,10 +126,11 @@ publication.
   peut demander un nouveau lien, envoye uniquement sur son numero WhatsApp (l'ancien est alors invalide).
   Elle est appelee toutes les heures par le service Railway `cron-alertes`.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
-  1 000 FCFA pour 2 jours. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp
+  trois formules : 1 jour a 1 000 FCFA (48 h pendant la promo de lancement, constante `LAUNCH_PROMO`),
+  7 jours a 5 000 FCFA, 30 jours a 15 000 FCFA. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp
   l'invite a renouveler. Dans son espace, il lit les consignes de paiement (`SUBSCRIPTION_PAYMENT_INFO`),
-  paie par Mobile Money et saisit la reference de la transaction. L'agent verifie puis valide dans
-  Clients (« Valider le paiement » ou « Activer 2 jours ») : les jours s'ajoutent a ce qui reste et le
+  choisit sa formule, paie par Mobile Money et saisit la reference de la transaction. L'agent verifie
+  puis valide dans Clients (« Valider le paiement », ou « Activer » avec la formule de son choix) : les jours s'ajoutent a ce qui reste et le
   client est prevenu sur WhatsApp. Aucun paiement en ligne automatique pour l'instant.
 - **Modification des criteres** : depuis son espace, le client modifie type, budget, chambres, secteur et
   exigences ; les nouveaux criteres s'appliquent aux envois suivants.

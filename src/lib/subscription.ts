@@ -1,10 +1,55 @@
-// Abonnement d'un client : essai gratuit de 24 h, puis 1 000 FCFA pour 2 jours de réception.
+// Abonnement d'un client : essai gratuit de 24 h, puis une formule 1 jour, 7 jours ou 30 jours.
 // Règles pures (sans base ni réseau) pour être testées et partagées entre le cron,
 // l'espace client et l'écran d'administration.
 
-export const SUBSCRIPTION_PRICE_FCFA = 1000;
-export const SUBSCRIPTION_DAYS = 2;
+/** Promo de lancement : la formule 1 jour donne 48 h. Passer à false pour revenir à 24 h. */
+export const LAUNCH_PROMO = true;
+
+export interface SubscriptionPlan {
+  id: "day" | "week" | "month";
+  label: string;
+  price: number;
+  /** Jours de réception réellement accordés (promo comprise). */
+  days: number;
+  note?: string;
+}
+
+export const SUBSCRIPTION_PLANS: readonly SubscriptionPlan[] = [
+  {
+    id: "day",
+    label: "1 jour",
+    price: 1000,
+    days: LAUNCH_PROMO ? 2 : 1,
+    ...(LAUNCH_PROMO ? { note: "Promo de lancement : 48 h au prix d'un jour" } : {}),
+  },
+  { id: "week", label: "7 jours", price: 5000, days: 7 },
+  { id: "month", label: "30 jours", price: 15000, days: 30 },
+];
+
+export const PLAN_IDS = ["day", "week", "month"] as const;
+export const DEFAULT_PLAN = SUBSCRIPTION_PLANS[0];
+
+/** Formule d'entrée, pour les textes « à partir de ». */
+export const SUBSCRIPTION_PRICE_FCFA = DEFAULT_PLAN.price;
+export const SUBSCRIPTION_DAYS = DEFAULT_PLAN.days;
 export const TRIAL_HOURS = 24;
+
+/** Formule correspondant à un identifiant ; la formule 1 jour par défaut. */
+export function findPlan(id: string | null | undefined): SubscriptionPlan {
+  return SUBSCRIPTION_PLANS.find((plan) => plan.id === id) ?? DEFAULT_PLAN;
+}
+
+/**
+ * Formule en une ligne, pour les écrans et les messages WhatsApp.
+ *
+ * @example planOffer(findPlan("week")) // "7 jours : 5 000 FCFA"
+ */
+export function planOffer(plan: SubscriptionPlan): string {
+  // Espace simple comme séparateur de milliers : lisible partout, y compris sur WhatsApp.
+  const price = plan.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const promo = plan.id === "day" && LAUNCH_PROMO ? " (promo de lancement : 48 h)" : "";
+  return `${plan.label} : ${price} FCFA${promo}`;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

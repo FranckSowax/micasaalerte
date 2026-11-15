@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
-import { needsExpiryNotice, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
+import { needsExpiryNotice, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "@/lib/subscription";
 import {
   DEFAULT_MAX_ALERTS_PER_DAY,
   DEFAULT_QUIET_END,
@@ -136,8 +136,7 @@ async function handleCron(request: Request) {
             name: demand.client_name,
             trial: !demand.paid_until,
             link: clientLink(token),
-            price: SUBSCRIPTION_PRICE_FCFA,
-            days: SUBSCRIPTION_DAYS,
+            offers: SUBSCRIPTION_PLANS.map(planOffer),
           })
         );
         if (notice.success) {

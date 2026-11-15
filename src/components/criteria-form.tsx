@@ -12,8 +12,9 @@ import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, listPlaces, locatePlace, placesWi
 // Champs des critères de recherche, partagés entre le formulaire d'inscription
 // (/demande/[userId]) et la modification des critères dans l'espace client (/c/[token]).
 
-const TYPE_OFFRE = ["location", "vente", "colocation"];
-const TYPE_BIEN = ["appartement", "maison", "studio", "villa", "chambre", "terrain"];
+const TYPE_OFFRE = ["location", "vente"];
+// Du plus petit au plus grand.
+const TYPE_BIEN = ["chambre", "studio", "appartement", "maison", "villa", "commerce", "terrain"];
 const MAX_ZONE_QUARTIERS = 12;
 export const MIN_RADIUS_KM = 1;
 export const MAX_RADIUS_KM = 5;
@@ -32,6 +33,7 @@ export const EXIGENCE_OPTIONS = [
   "Barrière",
   "Douche interne",
   "Cuisine équipée",
+  "Bord de route",
 ];
 
 const simplify = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
@@ -84,8 +86,9 @@ export const EMPTY_CRITERIA: CriteriaValue = {
 export function criteriaPayload(value: CriteriaValue) {
   const nearby = value.zone ? placesWithin(value.zone, value.radius) : [];
   return {
-    filter_type_offre: value.type_offre,
-    filter_type_bien: value.type_bien,
+    // Seuls les choix encore proposés sont enregistrés (une ancienne « colocation » disparaît).
+    filter_type_offre: value.type_offre.filter((o) => TYPE_OFFRE.includes(o)),
+    filter_type_bien: value.type_bien.filter((b) => TYPE_BIEN.includes(b)),
     filter_prix_min: value.prix_min ? Number(value.prix_min) : null,
     filter_prix_max: value.prix_max ? Number(value.prix_max) : null,
     filter_nb_chambres_min: value.nb_chambres_min ? Number(value.nb_chambres_min) : null,

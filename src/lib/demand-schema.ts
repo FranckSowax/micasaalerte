@@ -3,8 +3,10 @@ import { z } from "zod";
 // Critères de recherche d'un client : validation partagée entre le formulaire public
 // (création de la demande) et l'espace client (modification des critères).
 
+// « colocation » n'est plus proposée dans le formulaire, mais reste acceptée pour les demandes existantes.
 export const TYPE_OFFRE = ["location", "vente", "colocation"] as const;
-export const TYPE_BIEN = ["appartement", "maison", "studio", "villa", "chambre", "terrain"] as const;
+// Du plus petit au plus grand.
+export const TYPE_BIEN = ["chambre", "studio", "appartement", "maison", "villa", "commerce", "terrain"] as const;
 
 const MAX_PRIX = 100_000_000_000; // 100 milliards FCFA
 const prix = z.number().int().min(0).max(MAX_PRIX).nullish();

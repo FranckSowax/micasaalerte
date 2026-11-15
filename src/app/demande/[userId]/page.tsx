@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Home, Loader2, CheckCircle2 } from "lucide-react";
 import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, type CriteriaValue } from "@/components/criteria-form";
-import { SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
+import { planOffer, SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 
 export default function DemandePage({ params }: { params: { userId: string } }) {
   const [submitted, setSubmitted] = useState<{ isNew: boolean; spacePath: string | null } | null>(null);
@@ -15,7 +15,7 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
   const [identity, setIdentity] = useState({ client_name: "", client_phone: "" });
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
 
-  const price = SUBSCRIPTION_PRICE_FCFA.toLocaleString("fr-FR");
+  const offers = SUBSCRIPTION_PLANS.map(planOffer).join(" · ");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +63,7 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
             </p>
             {submitted.isNew ? (
               <p className="text-sm">
-                Votre essai gratuit de {TRIAL_HOURS} h commence maintenant. Ensuite : {price} FCFA pour {SUBSCRIPTION_DAYS} jours de réception.
+                Votre essai gratuit de {TRIAL_HOURS} h commence maintenant. Ensuite : {offers}.
               </p>
             ) : (
               <p className="text-sm">Vos critères sont mis à jour. Votre espace reste accessible par le lien reçu sur WhatsApp.</p>
@@ -91,7 +91,7 @@ export default function DemandePage({ params }: { params: { userId: string } }) 
           <h1 className="text-xl font-bold">Trouvez votre bien idéal</h1>
           <p className="text-muted-foreground mt-1">Remplissez vos critères et recevez les annonces sur WhatsApp</p>
           <p className="text-sm text-primary mt-2">
-            {TRIAL_HOURS} h d&apos;essai gratuit, puis {price} FCFA pour {SUBSCRIPTION_DAYS} jours
+            {TRIAL_HOURS} h d&apos;essai gratuit, puis {offers}
           </p>
         </div>
 

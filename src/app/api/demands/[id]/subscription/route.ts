@@ -1,15 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
-import { extendPaidUntil, formatDeadline, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
+import { extendPaidUntil, findPlan, formatDeadline, PLAN_IDS } from "@/lib/subscription";
 import { formatSubscriptionActivatedMessage, sendWhatsAppMessage } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 // Validation d'un abonnement par l'agent, depuis l'écran Clients :
-// - activate : le paiement est reçu, le client gagne 2 jours et en est prévenu sur WhatsApp ;
+// - activate : le paiement est reçu, le client gagne les jours de sa formule et en est prévenu sur WhatsApp ;
 // - reject   : la déclaration de paiement en attente est écartée.
 
-const ActionSchema = z.object({ action: z.enum(["activate", "reject"]) });
+const ActionSchema = z.object({
+  action: z.enum(["activate", "reject"]),
+  // Formule accordée quand l'agent active sans déclaration du client.
+  plan: z.enum(PLAN_IDS).default("day"),
+});
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -39,7 +43,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ success: true });
   }
 
-  const paidUntil = extendPaidUntil(demand, now);
+  // Formule : celle déclarée par le client si un paiement est en attente, sinon celle choisie par l'agent.
+  const plan = findPlan(parsed.data.plan);
+  const { data: pending } = await supabase
+    .from("subscription_payments")
+    .select("days")
+    .eq("demand_id", params.id)
+    .eq("status", "pending")
+    .limit(1)
+    .maybeSingle();
+  const days = typeof pending?.days === "number" && pending.days > 0 ? pending.days : plan.days;
+  const paidUntil = extendPaidUntil(demand, now, days);
   const token = (demand.access_token as string | null) || generateAccessToken();
 
   const { error } = await supabase
@@ -64,8 +78,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     await supabase.from("subscription_payments").insert({
       demand_id: params.id,
       user_id: user.id,
-      amount: SUBSCRIPTION_PRICE_FCFA,
-      days: SUBSCRIPTION_DAYS,
+      amount: plan.price,
+      days: plan.days,
       reference: "Validation manuelle",
       status: "confirmed",
       confirmed_at: now.toISOString(),

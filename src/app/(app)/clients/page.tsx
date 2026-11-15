@@ -12,17 +12,20 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import type { ClientDemand } from "@/types/database";
-import { subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PRICE_FCFA } from "@/lib/subscription";
+import { findPlan, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "@/lib/subscription";
 
 interface PendingPayment {
   id: string;
   demand_id: string;
   reference: string | null;
+  amount: number | null;
+  days: number | null;
   created_at: string;
 }
 
-const TYPE_OFFRE_OPTIONS = ["location", "vente", "colocation"];
-const TYPE_BIEN_OPTIONS = ["appartement", "maison", "studio", "villa", "chambre", "terrain"];
+const TYPE_OFFRE_OPTIONS = ["location", "vente"];
+// Du plus petit au plus grand.
+const TYPE_BIEN_OPTIONS = ["chambre", "studio", "appartement", "maison", "villa", "commerce", "terrain"];
 
 export default function ClientsPage() {
   const [demands, setDemands] = useState<ClientDemand[]>([]);
@@ -35,6 +38,8 @@ export default function ClientsPage() {
   const [copied, setCopied] = useState(false);
   const [payments, setPayments] = useState<PendingPayment[]>([]);
   const [acting, setActing] = useState<string | null>(null);
+  // Formule choisie par l'agent pour une activation sans déclaration du client.
+  const [planFor, setPlanFor] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     client_name: "",
     client_phone: "",
@@ -58,19 +63,24 @@ export default function ClientsPage() {
     // Table absente tant que la migration SQL n'est pas exécutée : la liste reste vide.
     const { data: pending } = await supabase
       .from("subscription_payments")
-      .select("id, demand_id, reference, created_at")
+      .select("id, demand_id, reference, amount, days, created_at")
       .eq("status", "pending");
     setPayments((pending || []) as unknown as PendingPayment[]);
     setLoading(false);
   };
 
   const handleSubscription = async (id: string, action: "activate" | "reject") => {
-    if (action === "activate" && !confirm(`Confirmer le paiement de ${SUBSCRIPTION_PRICE_FCFA.toLocaleString("fr-FR")} FCFA et activer ${SUBSCRIPTION_DAYS} jours ?`)) return;
+    const payment = payments.find((p) => p.demand_id === id);
+    const plan = findPlan(planFor[id]);
+    const what = payment?.amount && payment.days
+      ? `${payment.amount.toLocaleString("fr-FR")} FCFA et activer ${payment.days} jours`
+      : `${plan.price.toLocaleString("fr-FR")} FCFA et activer ${plan.days} jours`;
+    if (action === "activate" && !confirm(`Confirmer le paiement de ${what} ?`)) return;
     setError(""); setSuccess(""); setActing(id);
     const res = await fetch(`/api/demands/${id}/subscription`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, plan: plan.id }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setError(data.error || "Action impossible");
@@ -260,6 +270,7 @@ export default function ClientsPage() {
                     {payment && (
                       <p className="text-sm text-amber-400 mb-1">
                         Paiement déclaré le {formatDate(payment.created_at)} — référence : <span className="font-mono">{payment.reference || "non fournie"}</span>
+                        {payment.amount && payment.days ? ` — ${payment.amount.toLocaleString("fr-FR")} FCFA pour ${payment.days} jours` : ""}
                       </p>
                     )}
                     <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
@@ -278,9 +289,19 @@ export default function ClientsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                    {!payment && (
+                      <select
+                        aria-label="Formule à activer"
+                        value={planFor[d.id] || "day"}
+                        onChange={(e) => setPlanFor({ ...planFor, [d.id]: e.target.value })}
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        {SUBSCRIPTION_PLANS.map((p) => <option key={p.id} value={p.id}>{planOffer(p)}</option>)}
+                      </select>
+                    )}
                     <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={acting === d.id} onClick={() => handleSubscription(d.id, "activate")}>
                       {acting === d.id ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
-                      {payment ? "Valider le paiement" : `Activer ${SUBSCRIPTION_DAYS} jours`}
+                      {payment ? "Valider le paiement" : "Activer"}
                     </Button>
                     {payment && (
                       <Button variant="outline" size="sm" disabled={acting === d.id} onClick={() => handleSubscription(d.id, "reject")}>

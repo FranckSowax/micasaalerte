@@ -111,7 +111,13 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
 
   if (demand.filter_type_bien?.length) {
     if (!annonce.type_bien) uncertain.push("type");
-    else if (!demand.filter_type_bien.includes(annonce.type_bien)) blockedBy.push("type");
+    // Un client qui cherche un commerce accepte aussi un bureau (local professionnel).
+    else if (
+      !demand.filter_type_bien.includes(annonce.type_bien) &&
+      !(annonce.type_bien === "bureau" && demand.filter_type_bien.includes("commerce"))
+    ) {
+      blockedBy.push("type");
+    }
   }
 
   if (demand.filter_prix_min || demand.filter_prix_max) {

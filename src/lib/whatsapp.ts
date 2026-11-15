@@ -54,16 +54,17 @@ export function formatClientLinkMessage(params: { name?: string | null; count?: 
 /**
  * Message de fin d'accès (essai ou abonnement) : invite à renouveler depuis l'espace client.
  *
- * @example formatAccessEndedMessage({ name: "Awa", trial: true, link, price: 1000, days: 2 })
+ * @example formatAccessEndedMessage({ name: "Awa", trial: true, link, offers: ["1 jour : 1 000 FCFA"] })
  */
-export function formatAccessEndedMessage(params: { name?: string | null; trial: boolean; link: string; price: number; days: number }): string {
+export function formatAccessEndedMessage(params: { name?: string | null; trial: boolean; link: string; offers: string[] }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
   return [
     "*Mi Casa Alerte*",
     "",
     hello,
     params.trial ? "Votre essai gratuit de 24 h est terminé." : "Votre abonnement est terminé.",
-    `Pour continuer à recevoir les annonces : ${params.price.toLocaleString("fr-FR")} FCFA pour ${params.days} jours.`,
+    "Pour continuer à recevoir les annonces :",
+    ...params.offers.map((offer) => `• ${offer}`),
     "",
     "Renouvelez depuis votre espace :",
     params.link,

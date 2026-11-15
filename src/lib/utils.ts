@@ -29,6 +29,7 @@ export function getTypeBienLabel(type: string | null): string {
     chambre: "Chambre",
     terrain: "Terrain",
     bureau: "Bureau",
+    commerce: "Commerce",
     villa: "Villa",
   };
   return type ? labels[type] || type : "Non spécifié";
