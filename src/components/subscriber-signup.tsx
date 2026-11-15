@@ -1,35 +1,78 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Home, Loader2, CheckCircle2, MessageCircle } from "lucide-react";
-import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, type CriteriaValue } from "@/components/criteria-form";
+import { Nunito_Sans } from "next/font/google";
+import { ArrowLeft, CheckCircle2, Home, Loader2, MessageCircle } from "lucide-react";
+import { criteriaError, CriteriaFields, criteriaPayload, criteriaSummary, EMPTY_CRITERIA, type CriteriaValue } from "@/components/criteria-form";
 import { planOffer, SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 
+// Inscription d'un nouvel abonné : trois étapes courtes (recherche, budget et lieu, alerte WhatsApp),
+// puis le code reçu sur WhatsApp qui prouve que le numéro est le sien.
+// Utilisé par /signup (compte principal) et par le lien d'un agent (/demande/[userId]).
+
+const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallback: false });
+
+type Step = 1 | 2 | 3 | "code" | "done";
 type Reply = { error?: string; code?: string; message?: string; spacePath?: string | null };
 
+const DEFAULT_PHONE = "+241";
+const STEP_TITLES = ["Votre recherche", "Budget et emplacement", "Votre alerte WhatsApp"];
+const FIELD = "h-14 w-full rounded-xl border-2 border-input bg-background px-4 text-lg text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-primary";
+const PRIMARY = "inline-flex items-center justify-center w-full min-h-[58px] rounded-xl bg-primary px-5 text-lg font-bold text-primary-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+const LINK = "min-h-[48px] inline-flex items-center text-base font-semibold text-primary underline underline-offset-4";
+
 /**
- * Inscription d'un nouvel abonné, en deux étapes : ses critères, puis le code reçu sur WhatsApp
- * qui prouve que le numéro est le sien. Utilisé par /signup et par le lien d'un agent (/demande/…).
+ * Parcours d'inscription d'un abonné rattaché à l'agent `userId`.
  *
  * @example <SubscriberSignup userId={ownerId} />
  */
 export function SubscriberSignup({ userId }: { userId: string }) {
-  const [step, setStep] = useState<"form" | "code" | "done">("form");
+  const [step, setStep] = useState<Step>(1);
+  const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState(DEFAULT_PHONE);
+  const [code, setCode] = useState("");
   const [spacePath, setSpacePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [exists, setExists] = useState(false);
-  const [identity, setIdentity] = useState({ client_name: "", client_phone: "" });
-  const [code, setCode] = useState("");
-  const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
+  const [restored, setRestored] = useState(false);
 
-  const offers = SUBSCRIPTION_PLANS.map(planOffer).join(" · ");
-  const phone = identity.client_phone.replace(/\s/g, "");
+  const storageKey = `mca-inscription-${userId}`;
+  const phoneDigits = phone.replace(/\D/g, "");
+  const offers = SUBSCRIPTION_PLANS.map(planOffer);
+  const summary = criteriaSummary(criteria);
+
+  // Les réponses sont gardées dans l'onglet : un rechargement de page ne fait rien perdre.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null") as { criteria?: CriteriaValue; name?: string; phone?: string; step?: number } | null;
+      if (saved?.criteria) setCriteria({ ...EMPTY_CRITERIA, ...saved.criteria });
+      if (typeof saved?.name === "string") setName(saved.name);
+      if (typeof saved?.phone === "string" && saved.phone) setPhone(saved.phone);
+      if (saved?.step === 2 || saved?.step === 3) setStep(saved.step);
+    } catch {
+      // stockage indisponible ou illisible : on repart d'un formulaire vide
+    }
+    setRestored(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!restored || step === "done") return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ criteria, name, phone, step: typeof step === "number" ? step : 3 }));
+    } catch {
+      // stockage plein ou refusé : sans conséquence
+    }
+  }, [restored, storageKey, criteria, name, phone, step]);
+
+  const go = (next: Step) => {
+    setError(""); setInfo(""); setExists(false);
+    setStep(next);
+    window.scrollTo({ top: 0 });
+  };
 
   const post = async (path: string, body: unknown) => {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -42,51 +85,67 @@ export function SubscriberSignup({ userId }: { userId: string }) {
     setError(data.error || fallback);
   };
 
-  // Étape 1 : les critères sont gardés à l'écran, un code part sur le WhatsApp indiqué.
-  const requestCode = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setError(""); setInfo(""); setExists(false);
-    if (!phone.match(/^\+?\d{8,15}$/)) {
-      setError("Numéro WhatsApp invalide. Format : +24177123456");
-      return;
-    }
-    setLoading(true);
+  /** Erreur qui empêche de quitter l'étape en cours, en clair. */
+  const stepError = (current: Step): string | null => {
+    if (current === 1 && criteria.type_offre.length !== 1) return "Indiquez si vous souhaitez louer ou acheter.";
+    if (current === 2) return criteriaError(criteria);
+    if (current === 3 && !/^\d{8,15}$/.test(phoneDigits)) return "Indiquez votre numéro WhatsApp pour recevoir les alertes, avec l'indicatif (ex. +241 77 12 34 56).";
+    return null;
+  };
+
+  // Fin de l'étape 3 : un code part sur le WhatsApp indiqué.
+  const requestCode = async () => {
+    setError(""); setInfo(""); setExists(false); setLoading(true);
     try {
-      const { ok, data } = await post("/api/auth/otp/request", { phone, signup: true });
+      const { ok, data } = await post("/api/auth/otp/request", { phone: phoneDigits, signup: true });
       if (ok) {
-        setStep("code");
         setCode("");
+        setStep("code");
         setInfo(data.message || "Code envoyé sur WhatsApp.");
         window.scrollTo({ top: 0 });
       } else {
-        fail(data, "Envoi du code impossible");
+        fail(data, "Envoi du code impossible. Réessayez.");
       }
     } catch {
-      setError("Connexion impossible. Réessayez.");
+      setError("Connexion impossible. Vérifiez votre réseau et réessayez.");
     }
     setLoading(false);
   };
 
-  // Étape 2 : le code valide le numéro, l'inscription est enregistrée.
+  const next = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typeof step !== "number") return;
+    const problem = stepError(step);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    if (step === 3) void requestCode();
+    else go((step + 1) as Step);
+  };
+
+  // Le code valide le numéro : l'alerte est créée.
   const confirm = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(""); setInfo(""); setExists(false); setLoading(true);
     try {
       const { ok, data } = await post("/api/demands/public", {
         userId,
-        client_name: identity.client_name,
-        client_phone: phone,
+        client_name: name.trim() || null,
+        client_phone: phoneDigits,
         code,
         ...criteriaPayload(criteria),
       });
       if (ok) {
         setSpacePath(data.spacePath || null);
         setStep("done");
+        try { sessionStorage.removeItem(storageKey); } catch { /* sans conséquence */ }
+        window.scrollTo({ top: 0 });
       } else {
-        fail(data, "Inscription impossible");
+        fail(data, "Création de l'alerte impossible. Réessayez.");
       }
     } catch {
-      setError("Connexion impossible. Réessayez.");
+      setError("Connexion impossible. Vérifiez votre réseau et réessayez.");
     }
     setLoading(false);
   };
@@ -94,133 +153,185 @@ export function SubscriberSignup({ userId }: { userId: string }) {
   const alerts = (
     <>
       {error && (
-        <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm" role="alert">
+        <div className="rounded-xl border-2 border-destructive bg-destructive/10 p-4 text-base font-semibold text-destructive" role="alert">
           {error}
-          {exists && (
-            <Link href="/login" className="block mt-2 font-medium underline">Me connecter</Link>
-          )}
+          {exists && <Link href="/login" className="block mt-2 underline underline-offset-4">Me connecter</Link>}
         </div>
       )}
-      {info && <div className="p-3 rounded-md bg-primary/10 text-primary text-sm" role="status">{info}</div>}
+      {info && <div className="rounded-xl border-2 border-primary bg-primary/10 p-4 text-base font-semibold" role="status">{info}</div>}
     </>
   );
 
-  if (step === "done") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="p-8 space-y-4">
-            <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
-            <h2 className="text-2xl font-bold">Inscription réussie !</h2>
-            <p className="text-muted-foreground">
-              Vous recevrez les annonces correspondantes sur WhatsApp au numéro {identity.client_phone}.
-            </p>
-            <p className="text-sm">Votre essai gratuit de {TRIAL_HOURS} h commence maintenant. Ensuite : {offers}.</p>
-            {spacePath ? (
-              <a href={spacePath} className="inline-flex items-center justify-center h-11 px-5 rounded-md bg-primary text-primary-foreground font-medium w-full">
-                Ouvrir mon espace
-              </a>
-            ) : (
-              <Link href="/login" className="inline-flex items-center justify-center h-11 px-5 rounded-md bg-primary text-primary-foreground font-medium w-full">
-                Me connecter à mon espace
-              </Link>
-            )}
-          </CardContent>
-        </Card>
+  const recap = (
+    <section className="rounded-2xl border-2 border-primary bg-card p-5 shadow-sm" aria-labelledby="recap-titre">
+      <h2 id="recap-titre" className="text-xl font-bold mb-3">Votre alerte</h2>
+      <ul className="space-y-3">
+        {summary.map(({ icon: Icon, text }) => (
+          <li key={text} className="flex items-start gap-3 text-base">
+            <Icon className="h-5 w-5 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+            <span>{text}</span>
+          </li>
+        ))}
+        <li className="flex items-start gap-3 text-base">
+          <MessageCircle className="h-5 w-5 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+          <span>Alertes sur WhatsApp, au fil des nouvelles annonces</span>
+        </li>
+      </ul>
+    </section>
+  );
+
+  const shell = (children: React.ReactNode, narrow = false) => (
+    <div className={`theme-light ${font.className} min-h-screen px-4 py-6 text-[17px]`}>
+      <div className={`mx-auto space-y-5 ${narrow ? "max-w-md" : "max-w-xl"}`}>
+        <div className="flex items-center justify-center gap-2">
+          <Home className="h-7 w-7 text-primary" aria-hidden="true" />
+          <span className="text-xl font-extrabold text-primary">Mi Casa Alerte</span>
+        </div>
+        {children}
       </div>
+    </div>
+  );
+
+  if (step === "done") {
+    return shell(
+      <>
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm text-center space-y-3">
+          <CheckCircle2 className="h-14 w-14 text-primary mx-auto" aria-hidden="true" />
+          <h1 className="text-2xl font-extrabold">Votre alerte est créée</h1>
+          <p className="text-base text-muted-foreground">
+            Les nouvelles annonces qui correspondent arriveront sur WhatsApp au {phone}.
+            Votre essai gratuit de {TRIAL_HOURS} h commence maintenant.
+          </p>
+        </div>
+        {recap}
+        {spacePath ? (
+          <a href={spacePath} className={PRIMARY}>Ouvrir mon espace</a>
+        ) : (
+          <Link href="/login" className={PRIMARY}>Me connecter à mon espace</Link>
+        )}
+        <p className="text-center text-base text-muted-foreground">Dans votre espace, vous modifiez vos critères à tout moment.</p>
+      </>,
+      true
     );
   }
 
   if (step === "code") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Confirmez votre numéro</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={confirm} className="space-y-4">
-              {alerts}
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="signup-code">Code reçu sur WhatsApp</label>
-                <Input
-                  id="signup-code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="\d{6}"
-                  maxLength={6}
-                  placeholder="6 chiffres"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  className="text-center text-lg tracking-[0.4em]"
-                  autoFocus
-                  required
-                />
-                <p className="text-xs text-muted-foreground">Envoyé au {identity.client_phone}. Valable 5 minutes.</p>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading || code.length !== 6}>
-                {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Terminer mon inscription
-              </Button>
-              <div className="flex justify-between text-sm">
-                <button type="button" className="text-primary hover:underline" onClick={() => { setStep("form"); setError(""); setInfo(""); }}>
-                  Modifier ma demande
-                </button>
-                <button type="button" className="text-primary hover:underline disabled:opacity-50" disabled={loading} onClick={() => requestCode()}>
-                  Renvoyer le code
-                </button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+    return shell(
+      <form onSubmit={confirm} className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4" noValidate>
+        <h1 className="text-2xl font-extrabold">Confirmez votre numéro</h1>
+        {alerts}
+        <div>
+          <label className="text-base font-semibold block mb-2" htmlFor="signup-code">Code reçu sur WhatsApp</label>
+          <input
+            id="signup-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="6 chiffres"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className={`${FIELD} text-center text-2xl tracking-[0.4em]`}
+            autoFocus
+          />
+          <p className="text-base text-muted-foreground mt-2">Envoyé au {phone}. Valable 5 minutes.</p>
+        </div>
+        <button type="submit" className={PRIMARY} disabled={loading || code.length !== 6}>
+          {loading && <Loader2 className="h-5 w-5 mr-2 animate-spin" aria-hidden="true" />}
+          Activer mon alerte WhatsApp
+        </button>
+        <div className="flex flex-wrap justify-between gap-x-4">
+          <button type="button" className={LINK} onClick={() => go(3)}>Modifier ma demande</button>
+          <button type="button" className={`${LINK} disabled:opacity-50`} disabled={loading} onClick={() => void requestCode()}>Renvoyer le code</button>
+        </div>
+      </form>,
+      true
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background px-4 py-8">
-      <div className="max-w-lg mx-auto space-y-6">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Home className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-primary">Mi Casa Alerte</span>
-          </div>
-          <h1 className="text-xl font-bold">Trouvez votre bien idéal</h1>
-          <p className="text-muted-foreground mt-1">Remplissez vos critères et recevez les annonces sur WhatsApp</p>
-          <p className="text-sm text-primary mt-2">
-            {TRIAL_HOURS} h d&apos;essai gratuit, puis {offers}
+  return shell(
+    <form onSubmit={next} className="space-y-5 pb-36" noValidate>
+      {step === 1 && (
+        <header className="text-center space-y-2">
+          <h1 className="text-[28px] leading-tight font-extrabold">Créez votre alerte immobilière</h1>
+          <p className="text-base text-muted-foreground">
+            Recevez sur WhatsApp les nouvelles annonces Facebook et TikTok qui correspondent à vos critères.
           </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Déjà inscrit ? <Link href="/login" className="text-primary hover:underline">Me connecter</Link>
+          <p className="text-base font-bold">{TRIAL_HOURS} h d&apos;essai gratuit — aucun paiement demandé aujourd&apos;hui</p>
+          <details className="text-left rounded-xl border border-border bg-card px-4">
+            <summary className="min-h-[48px] flex items-center cursor-pointer text-base font-semibold text-primary">Voir les tarifs</summary>
+            <ul className="pb-3 space-y-1 text-base">
+              {offers.map((offer) => <li key={offer}>{offer}</li>)}
+            </ul>
+            <p className="pb-4 text-base text-muted-foreground">
+              Après l&apos;essai, rien n&apos;est prélevé automatiquement : si vous souhaitez continuer, vous choisissez une formule et payez par Mobile Money.
+            </p>
+          </details>
+          <p className="text-base text-muted-foreground">
+            Déjà inscrit ? <Link href="/login" className="font-semibold text-primary underline underline-offset-4">Me connecter</Link>
           </p>
+        </header>
+      )}
+
+      <div aria-live="polite">
+        <p className="text-base font-bold">Étape {step} sur 3 · {STEP_TITLES[step - 1]}</p>
+        <div className="mt-2 grid grid-cols-3 gap-2" aria-hidden="true">
+          {[1, 2, 3].map((n) => <span key={n} className={`h-2 rounded-full ${n <= step ? "bg-primary" : "bg-border"}`} />)}
         </div>
-
-        <form onSubmit={requestCode} className="space-y-6">
-          {alerts}
-
-          <Card>
-            <CardHeader><CardTitle className="text-lg">Vos informations</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-sm font-medium" htmlFor="signup-name">Nom *</label>
-                <Input id="signup-name" autoComplete="name" placeholder="Votre nom" value={identity.client_name} onChange={(e) => setIdentity({ ...identity, client_name: e.target.value })} minLength={2} maxLength={80} required />
-              </div>
-              <div>
-                <label className="text-sm font-medium" htmlFor="signup-phone">Numéro WhatsApp *</label>
-                <Input id="signup-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+24177123456" value={identity.client_phone} onChange={(e) => setIdentity({ ...identity, client_phone: e.target.value })} required />
-                <p className="text-xs text-muted-foreground mt-1">Avec l&apos;indicatif du pays. Un code de confirmation y sera envoyé.</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <CriteriaFields value={criteria} onChange={setCriteria} />
-
-          <Button type="submit" className="w-full text-lg h-12" disabled={loading}>
-            {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <MessageCircle className="h-5 w-5 mr-2" />}
-            Recevoir mon code WhatsApp
-          </Button>
-        </form>
       </div>
-    </div>
+
+      {alerts}
+
+      {step === 1 && <CriteriaFields value={criteria} onChange={setCriteria} sections={["recherche"]} />}
+      {step === 2 && <CriteriaFields value={criteria} onChange={setCriteria} sections={["budget", "lieu"]} />}
+      {step === 3 && (
+        <>
+          <CriteriaFields value={criteria} onChange={setCriteria} sections={["equipements"]} />
+
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-4">
+            <h2 className="text-xl font-bold leading-tight">Où envoyer vos alertes ?</h2>
+            <div>
+              <label className="text-base font-semibold block mb-2" htmlFor="signup-phone">Numéro WhatsApp</label>
+              <input
+                id="signup-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+241 77 12 34 56"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s]/g, "").slice(0, 20))}
+                className={FIELD}
+              />
+              <p className="text-base text-muted-foreground mt-2">Un code de confirmation y sera envoyé.</p>
+            </div>
+            <div>
+              <label className="text-base font-semibold block mb-2" htmlFor="signup-name">Prénom (facultatif)</label>
+              <input id="signup-name" autoComplete="given-name" maxLength={80} placeholder="Votre prénom" value={name} onChange={(e) => setName(e.target.value)} className={FIELD} />
+            </div>
+          </section>
+
+          {recap}
+        </>
+      )}
+
+      {/* Barre d'action fixée en bas : toujours visible, sans masquer les champs (marge sous le formulaire). */}
+      <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card/95 backdrop-blur px-4 py-3">
+        <div className="mx-auto max-w-xl flex items-center gap-3">
+          {step > 1 && (
+            <button type="button" onClick={() => go((step - 1) as Step)} className="inline-flex items-center justify-center min-h-[58px] rounded-xl border-2 border-border bg-card px-4 text-base font-bold" aria-label="Étape précédente">
+              <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+            </button>
+          )}
+          <button type="submit" className={PRIMARY} disabled={loading}>
+            {loading && <Loader2 className="h-5 w-5 mr-2 animate-spin" aria-hidden="true" />}
+            {step === 3 ? "Créer mon alerte gratuite" : "Continuer"}
+          </button>
+        </div>
+        {step === 3 && (
+          <p className="mx-auto max-w-xl mt-2 text-center text-sm text-muted-foreground">
+            {TRIAL_HOURS} h d&apos;essai gratuit · Modification à tout moment depuis votre espace
+          </p>
+        )}
+      </div>
+    </form>
   );
 }

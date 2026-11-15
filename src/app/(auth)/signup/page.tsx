@@ -18,7 +18,7 @@ export default async function SignupPage({ searchParams }: { searchParams: { age
   if (ownerId) return <SubscriberSignup userId={ownerId} />;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="theme-light min-h-screen flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Inscription indisponible</CardTitle>

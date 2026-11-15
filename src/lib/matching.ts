@@ -17,7 +17,22 @@ export const ALERT_TIMEZONE = "Africa/Libreville";
 
 /** Valeur attribuée à une préférence quand l'annonce ne dit rien sur ce point. */
 const UNKNOWN = 0.5;
-const WEIGHTS = { quartier: 35, meuble: 15, climatise: 10, parking: 10, surface: 10, motsCles: 20 } as const;
+const WEIGHTS = { quartier: 35, meuble: 15, climatise: 10, parking: 10, surface: 10, motsCles: 20, equipement: 5 } as const;
+
+/**
+ * Équipements cochés dans le formulaire et repérés dans le texte de l'annonce (pas de champ dédié).
+ * `key` : libellé de l'option, normalisé ; `words` : formulations rencontrées dans les annonces.
+ */
+const TEXT_EQUIPMENTS: { key: string; label: string; words: string[] }[] = [
+  { key: "gardien", label: "gardien", words: ["gardien", "gardiennage", "vigile"] },
+  { key: "eau chaude", label: "eau chaude", words: ["eau chaude", "chauffe eau"] },
+  { key: "groupe electrogene", label: "groupe électrogène", words: ["groupe electrogene", "groupe electro"] },
+  { key: "forage", label: "forage", words: ["forage"] },
+  { key: "barriere", label: "barrière", words: ["barriere", "cloture", "portail"] },
+  { key: "douche interne", label: "douche interne", words: ["douche interne", "douche interieure", "toilette interne", "toilettes internes", "wc interne"] },
+  { key: "cuisine equipee", label: "cuisine équipée", words: ["cuisine equipee", "cuisine amenagee"] },
+  { key: "bord de route", label: "bord de route", words: ["bord de route", "bordure de route", "en bordure"] },
+];
 const EXCLUDED_KEYWORD_PENALTY = 30;
 const UNCERTAIN_PENALTY = 10;
 
@@ -78,6 +93,10 @@ export function demandPreferences(demand: ClientDemand) {
     meuble: wants(demand.filter_meuble, "meubl"),
     climatise: wants(demand.filter_climatise, "climatis"),
     parking: wants(demand.filter_parking, "parking"),
+    // « (indispensables) » dans les exigences : l'annonce doit mentionner chaque équipement coché.
+    // Sinon ce sont des préférences : elles pèsent dans le score sans écarter l'annonce.
+    strict: exigences.includes("indispensable"),
+    equipments: TEXT_EQUIPMENTS.filter((e) => exigences.includes(e.key)),
     surfaceMin: demand.filter_surface_min ?? null,
     keywordsInclude: (demand.keywords_include || []).map(normalizeText).filter(Boolean),
     keywordsExclude: (demand.keywords_exclude || []).map(normalizeText).filter(Boolean),
@@ -140,6 +159,26 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
     }
   }
 
+  const details = detailsOf(annonce);
+  const text = ` ${normalizeText(`${annonce.raw_text || ""} ${annonce.ai_summary || ""} ${(annonce.ai_tags || []).join(" ")}`)} `;
+  const actualClimatise = details.climatise ?? (hasTag(annonce, "climatis") ? true : null);
+  const actualParking = details.parking ?? (hasTag(annonce, "parking") ? true : null);
+  const mentions = (words: string[]) => words.some((w) => text.includes(w));
+
+  // Équipements indispensables : l'annonce doit les mentionner tous. Une annonce qui n'en dit
+  // rien est écartée — c'est le choix explicite de l'abonné, annoncé comme plus restrictif.
+  if (prefs.strict) {
+    const missing: string[] = [];
+    if (prefs.meuble === true && annonce.meuble !== true) missing.push("meublé");
+    if (prefs.climatise === true && actualClimatise !== true) missing.push("climatisé");
+    if (prefs.parking === true && actualParking !== true) missing.push("parking");
+    for (const e of prefs.equipments) if (!mentions(e.words)) missing.push(e.label);
+    if (missing.length) {
+      blockedBy.push("equipement");
+      reasons.push(`équipements indispensables absents : ${missing.join(", ")}`);
+    }
+  }
+
   // Annonce presque vide : moins de deux informations parmi type de bien, prix et quartier.
   // WHY: elle ne contredit aucun critère, donc elle passerait chez tous les clients (cas d'une
   // vente d'articles prise pour de l'immobilier). Un humain la relit avant tout envoi.
@@ -183,21 +222,15 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
   }
   if (prefs.meuble !== null) add(WEIGHTS.meuble, boolScore(prefs.meuble, annonce.meuble), "meublé");
 
-  const details = detailsOf(annonce);
-  if (prefs.climatise !== null) {
-    const actual = details.climatise ?? (hasTag(annonce, "climatis") ? true : null);
-    add(WEIGHTS.climatise, boolScore(prefs.climatise, actual), "climatisation");
-  }
-  if (prefs.parking !== null) {
-    const actual = details.parking ?? (hasTag(annonce, "parking") ? true : null);
-    add(WEIGHTS.parking, boolScore(prefs.parking, actual), "parking");
-  }
+  if (prefs.climatise !== null) add(WEIGHTS.climatise, boolScore(prefs.climatise, actualClimatise), "climatisation");
+  if (prefs.parking !== null) add(WEIGHTS.parking, boolScore(prefs.parking, actualParking), "parking");
+  // Équipements repérés dans le texte : mentionné = oui ; non mentionné = inconnu, jamais « non ».
+  for (const e of prefs.equipments) add(WEIGHTS.equipement, mentions(e.words) ? 1 : UNKNOWN, e.label);
   if (prefs.surfaceMin) {
     const value = !annonce.superficie ? UNKNOWN : annonce.superficie >= prefs.surfaceMin ? 1 : 0;
     add(WEIGHTS.surface, value, "surface");
   }
 
-  const text = ` ${normalizeText(`${annonce.raw_text || ""} ${annonce.ai_summary || ""} ${(annonce.ai_tags || []).join(" ")}`)} `;
   if (prefs.keywordsInclude.length) {
     const found = prefs.keywordsInclude.filter((k) => text.includes(` ${k} `)).length;
     weightSum += WEIGHTS.motsCles;

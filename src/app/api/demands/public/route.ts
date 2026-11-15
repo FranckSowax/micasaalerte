@@ -24,7 +24,8 @@ const ACCOUNT_WINDOW_MS = 60 * 60_000;
 const DemandSchema = z
   .object({
     userId: z.string().uuid(),
-    client_name: z.string().trim().min(2).max(80),
+    // Facultatif : l'alerte fonctionne sans prénom.
+    client_name: z.string().trim().max(80).nullish(),
     // Stocké en chiffres seuls (sans "+") : c'est le format du champ `from` envoyé
     // par WhatsApp, donc le chatbot retrouve la demande créée par le formulaire.
     client_phone: z
@@ -39,7 +40,7 @@ const DemandSchema = z
 
 const FIELD_MESSAGES: Record<string, string> = {
   userId: "Lien invalide",
-  client_name: "Nom invalide (2 à 80 caractères)",
+  client_name: "Prénom trop long (80 caractères maximum)",
   client_phone: "Numéro WhatsApp invalide. Format : +24177123456",
   code: "Le code comporte 6 chiffres.",
   ...CRITERIA_FIELD_MESSAGES,
@@ -141,7 +142,7 @@ export async function POST(request: Request) {
   const base = {
     user_id: input.userId,
     client_phone: input.client_phone,
-    client_name: input.client_name,
+    client_name: input.client_name || null,
     is_active: true,
     ...filters,
     source: "form",

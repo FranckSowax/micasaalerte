@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, ExternalLink, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
-import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
+import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
@@ -52,6 +52,7 @@ interface Criteria {
   prixMin: number | null;
   prixMax: number | null;
   chambresMin: number | null;
+  quartiers?: string[];
   exigences: string;
   geoLat: number | null;
   geoLon: number | null;
@@ -69,8 +70,11 @@ function toCriteriaValue(c: Criteria | undefined): CriteriaValue {
     prix_max: c.prixMax ? String(c.prixMax) : "",
     nb_chambres_min: c.chambresMin ? String(c.chambresMin) : "",
     exigences: parseExigences(c.exigences),
+    exigencesStrict: exigencesAreStrict(c.exigences),
+    // Avec un point sur la carte, les quartiers enregistrés en sont déduits : on ne les réaffiche pas.
+    quartiers: hasZone ? [] : c.quartiers || [],
     zone: hasZone ? { lat: c.geoLat as number, lon: c.geoLon as number, label: "Votre secteur" } : null,
-    radius: Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(c.radiusKm || MIN_RADIUS_KM))),
+    radius: Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(c.radiusKm || EMPTY_CRITERIA.radius))),
   };
 }
 
@@ -164,6 +168,11 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   };
 
   const saveCriteria = async () => {
+    const problem = criteriaError(criteria);
+    if (problem) {
+      setNotice({ ok: false, text: problem });
+      return;
+    }
     setSaving(true);
     setNotice(null);
     try {

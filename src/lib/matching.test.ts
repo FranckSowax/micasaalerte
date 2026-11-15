@@ -64,6 +64,23 @@ describe("critères bloquants", () => {
     expect(matchDemand(complete, d).uncertain).not.toContain("contenu");
   });
 
+  it("équipements souhaités : une annonce qui n'en parle pas reste envoyée", () => {
+    const d = demand({ exigences: "Gardien, Forage" });
+    const m = matchDemand(annonce(), d);
+    expect(m.eligible).toBe(true);
+    expect(shouldSend(m, d)).toBe(true);
+    const avec = matchDemand(annonce({ raw_text: "Appartement avec gardien et forage" }), d);
+    expect(avec.score).toBeGreaterThanOrEqual(m.score);
+  });
+
+  it("équipements indispensables : l'annonce doit les mentionner tous", () => {
+    const d = demand({ exigences: "Gardien, Parking (indispensables)" });
+    expect(matchDemand(annonce(), d).blockedBy).toContain("equipement");
+    expect(matchDemand(annonce({ raw_text: "Appartement avec gardien" }), d).blockedBy).toContain("equipement");
+    const complet = annonce({ raw_text: "Appartement avec gardien", details: { parking: true } });
+    expect(matchDemand(complet, d).blockedBy).not.toContain("equipement");
+  });
+
   it("accepte un bureau pour un client qui cherche un commerce, pas l'inverse", () => {
     const commerce = demand({ filter_type_bien: ["commerce"], filter_nb_chambres_min: null });
     expect(matchDemand(annonce({ type_bien: "bureau", nb_chambres: null }), commerce).blockedBy).not.toContain("type");

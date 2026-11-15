@@ -121,7 +121,8 @@ export async function GET(request: Request, { params }: { params: { token: strin
         exigences: demand.exigences || "",
         geoLat: hasPoint ? demand.geo_lat : null,
         geoLon: hasPoint ? demand.geo_lon : null,
-        radiusKm: hasPoint ? radiusKm : null,
+        // Le rayon vaut aussi autour de chaque quartier choisi par son nom.
+        radiusKm: demand.geo_radius_km && Number(demand.geo_radius_km) > 0 ? radiusKm : null,
       },
       zones,
       annonces: items,

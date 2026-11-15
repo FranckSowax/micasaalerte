@@ -132,7 +132,10 @@ publication.
   indispensables si la session WhatsApp est deconnectee.
 - **Inscription d'un abonne** (`src/components/subscriber-signup.tsx`) : `/signup` affiche le formulaire
   du compte principal (`OWNER_USER_ID`, sinon le plus ancien compte agent) ; `/demande/<id>` celui d'un
-  agent precis. Deux etapes : criteres, puis code recu sur WhatsApp qui prouve le numero. Un numero deja
+  agent precis. Interface claire (classe `theme-light`), trois etapes (recherche ; budget et lieu ;
+  equipements, numero et recapitulatif), puis code recu sur WhatsApp qui prouve le numero. Louer ou
+  acheter : un seul choix par alerte. Plusieurs quartiers possibles, rayon de 1 a 15 km. Equipements
+  « souhaites » (score) ou « indispensables » (l'annonce doit les mentionner). Un numero deja
   inscrit est refuse et renvoye vers `/login` (il modifie ses criteres dans son espace). « Deconnexion »
   dans l'espace client delie l'appareil. Un compte agent se cree par email : `/signup?agent=1`.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis

@@ -18,10 +18,11 @@ export const criteriaShape = {
   filter_prix_max: prix,
   filter_nb_chambres_min: z.number().int().min(0).max(20).nullish(),
   filter_quartiers: z.array(z.string().trim().min(1).max(60)).max(12).default([]),
-  // Secteur choisi sur la carte : un point au Gabon et un rayon de 1 à 5 km.
+  // Secteur : des quartiers nommés, ou un point choisi sur la carte (au Gabon). Le rayon, de 1 à
+  // 15 km, s'applique autour du point ou autour de chaque quartier.
   geo_lat: z.number().min(-4.1).max(2.5).nullish(),
   geo_lon: z.number().min(8.5).max(14.7).nullish(),
-  geo_radius_km: z.number().min(1).max(5).nullish(),
+  geo_radius_km: z.number().min(1).max(15).nullish(),
   filter_ville: z.string().trim().min(1).max(60).nullish(),
   exigences: z.string().trim().max(500).nullish(),
 };
@@ -42,7 +43,7 @@ export const CRITERIA_FIELD_MESSAGES: Record<string, string> = {
   filter_quartiers: "Secteur trop étendu",
   geo_lat: "Secteur invalide",
   geo_lon: "Secteur invalide",
-  geo_radius_km: "Distance invalide (1 à 5 km)",
+  geo_radius_km: "Distance invalide (1 à 15 km)",
   exigences: "Exigences trop longues (500 caractères maximum)",
 };
 
@@ -54,6 +55,7 @@ export const CRITERIA_FIELD_MESSAGES: Record<string, string> = {
  */
 export function criteriaToRow(input: CriteriaInput) {
   const hasZone = typeof input.geo_lat === "number" && typeof input.geo_lon === "number";
+  const hasSector = hasZone || input.filter_quartiers.length > 0;
   return {
     filters: {
       filter_type_offre: input.filter_type_offre,
@@ -62,15 +64,15 @@ export function criteriaToRow(input: CriteriaInput) {
       filter_prix_max: input.filter_prix_max || null,
       filter_nb_chambres_min: input.filter_nb_chambres_min || null,
       filter_quartiers: input.filter_quartiers,
-      // Avec un secteur choisi sur la carte, la ville ne doit pas bloquer : Angondjé relève
-      // d'Akanda, pas de Libreville. Le secteur fait foi.
-      filter_ville: hasZone ? null : input.filter_ville || "Libreville",
+      // Avec un secteur (quartiers ou point sur la carte), la ville ne doit pas bloquer :
+      // Angondjé relève d'Akanda, pas de Libreville. Le secteur fait foi.
+      filter_ville: hasSector ? null : input.filter_ville || "Libreville",
       exigences: input.exigences || null,
     },
     zone: {
       geo_lat: hasZone ? input.geo_lat : null,
       geo_lon: hasZone ? input.geo_lon : null,
-      geo_radius_km: hasZone ? (input.geo_radius_km ?? 1) : null,
+      geo_radius_km: hasSector ? (input.geo_radius_km ?? (hasZone ? 1 : 5)) : null,
     },
   };
 }
