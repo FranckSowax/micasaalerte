@@ -1,4 +1,6 @@
+import { applyLearning, EMPTY_PROFILE, type LearnedProfile } from "@/lib/learning";
 import { matchDemand, demandPreferences } from "@/lib/matching";
+import { loadLearnedProfile } from "@/lib/selection";
 import { withdrawalOf } from "@/lib/reports";
 import { annonceVersion, doubtLabels, REVIEW_DISMISSED } from "@/lib/review";
 import { createClient } from "@/lib/supabase/server";
@@ -63,6 +65,12 @@ export async function GET() {
     if (id && channel(s).id === "whatsapp") perMessage.set(id, (perMessage.get(id) || 0) + 1);
   }
 
+  // Apprentissage par abonné, à partir de ses avis : il entre dans le score affiché.
+  const profiles = new Map<string, LearnedProfile>();
+  for (const demandId of Array.from(demands.keys())) {
+    profiles.set(demandId, await loadLearnedProfile(supabase, sends.filter((s) => s.demand_id === demandId)));
+  }
+
   const items = [];
   for (const send of sends) {
     const demand = demands.get(send.demand_id as string);
@@ -71,7 +79,7 @@ export async function GET() {
 
     // Matching recalculé avec les critères ACTUELS de l'abonné : s'il les a changés depuis
     // l'envoi, le résultat peut différer de celui du jour de l'envoi.
-    const match = matchDemand(annonce, demand);
+    const match = applyLearning(matchDemand(annonce, demand), annonce, profiles.get(demand.id) ?? EMPTY_PROFILE);
     const details = (annonce as unknown as { details?: Record<string, unknown> | null }).details ?? null;
     const via = channel(send);
     const messageId = (send.message_id as string | null) || null;

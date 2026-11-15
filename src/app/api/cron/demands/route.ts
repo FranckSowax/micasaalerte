@@ -13,6 +13,8 @@ import {
   startOfLocalDayIso,
 } from "@/lib/matching";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { applyLearning } from "@/lib/learning";
+import { loadLearnedProfile } from "@/lib/selection";
 import { isCopyablePhoto, isStoredPhoto } from "@/lib/photos";
 import { sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
@@ -198,6 +200,7 @@ async function handleCron(request: Request) {
     annoncesAdded: 0,
     heldForReview: 0,
     sentForCheck: 0,
+    learningClients: 0,
     skippedQuiet: 0,
     capped: 0,
     expired: 0,
@@ -268,10 +271,14 @@ async function handleCron(request: Request) {
       // Résumé quotidien : un seul message par jour.
       if (demand.alert_mode === "digest" && addedToday > 0) continue;
 
+      // Apprentissage : le score tient compte des avis déjà donnés par cet abonné.
+      const profile = await loadLearnedProfile(supabase, (sends || []) as Record<string, unknown>[]);
+      if (profile.samples) stats.learningClients++;
+
       const candidates: { annonce: Annonce; score: number }[] = [];
       for (const annonce of annonces) {
         if (alreadySent.has(`${annonce.id}:${versionOf(annonce)}`)) continue;
-        const match = matchDemand(annonce, demand);
+        const match = applyLearning(matchDemand(annonce, demand), annonce, profile);
         if (!match.eligible) continue;
         if (match.needsReview) {
           // Une seule information manquante : l'annonce part chez l'abonné, qui la trouve dans son

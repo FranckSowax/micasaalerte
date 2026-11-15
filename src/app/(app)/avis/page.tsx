@@ -32,6 +32,21 @@ interface Report {
   analysis: { verdict: "retirer" | "garder" | "incertain"; reasoning: string; signals: string[]; at: string } | null;
 }
 
+interface Learning {
+  name: string | null;
+  phone: string;
+  samples: number;
+  precision: number | null;
+  learned: string[];
+}
+
+interface MatchingAnalysis {
+  reasoning: string;
+  findings: string[];
+  recommendations: string[];
+  at: string;
+}
+
 interface RecentFeedback {
   name: string | null;
   phone: string;
@@ -66,6 +81,9 @@ export default function AvisPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [recent, setRecent] = useState<RecentFeedback[]>([]);
   const [stats, setStats] = useState<Record<string, number>>({});
+  const [learning, setLearning] = useState<Learning[]>([]);
+  const [analysis, setAnalysis] = useState<{ result: MatchingAnalysis; basedOn: number } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -81,6 +99,7 @@ export default function AvisPage() {
         setReports(data.reports || []);
         setRecent(data.recent || []);
         setStats(data.stats || {});
+        setLearning(data.learning || []);
         setMigrationNeeded(!!data.migrationNeeded);
         setAiConfigured(data.aiConfigured !== false);
       } else {
@@ -118,6 +137,19 @@ export default function AvisPage() {
     setBusy(null);
   };
 
+  const analyze = async () => {
+    setError(""); setSuccess(""); setAnalyzing(true);
+    try {
+      const res = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "analyze" }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.analysis) setAnalysis({ result: data.analysis, basedOn: data.basedOn || 0 });
+      else setError(data.error || "Analyse impossible");
+    } catch {
+      setError("Connexion impossible. Réessayez.");
+    }
+    setAnalyzing(false);
+  };
+
   const pending = reports.filter((r) => !r.withdrawal);
   const withdrawn = reports.filter((r) => r.withdrawal);
   const total = STAT_ORDER.reduce((sum, key) => sum + (stats[key] || 0), 0);
@@ -153,6 +185,61 @@ export default function AvisPage() {
                 </CardContent></Card>
               ))}
             </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-semibold">Amélioration du matching</h2>
+            <p className="text-sm text-muted-foreground">
+              Le matching s&apos;ajuste seul à chaque abonné : un quartier, un type ou un niveau de prix écarté au moins deux fois fait baisser le score des annonces semblables ; un quartier jugé pertinent le fait monter. Les critères obligatoires ne changent jamais.
+            </p>
+            {!learning.length ? (
+              <Card><CardContent className="p-6 text-sm text-muted-foreground">Aucun avis pour l&apos;instant : rien n&apos;a encore été appris.</CardContent></Card>
+            ) : (
+              <Card><CardContent className="p-0 divide-y divide-border">
+                {learning.map((l, i) => (
+                  <div key={i} className="p-3 text-sm space-y-1">
+                    <p>
+                      <span className="font-medium">{l.name || l.phone}</span>
+                      <span className="text-muted-foreground"> · {l.samples} avis{l.precision !== null ? ` · ${Math.round(l.precision * 100)} % d'annonces jugées pertinentes` : ""}</span>
+                    </p>
+                    {l.learned.length ? (
+                      <ul className="list-disc pl-5 text-muted-foreground">{l.learned.map((line) => <li key={line}>{line}</li>)}</ul>
+                    ) : (
+                      <p className="text-muted-foreground">Pas encore de tendance : il faut au moins deux refus pour le même motif.</p>
+                    )}
+                  </div>
+                ))}
+              </CardContent></Card>
+            )}
+
+            <Card><CardContent className="p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <p className="flex-1 text-sm">
+                  <span className="font-medium">Analyse d&apos;ensemble par le modèle.</span> Il lit les critères, les avis et les annonces écartées, puis rédige un raisonnement et des recommandations. Aucun nom ni numéro ne lui est transmis.
+                </p>
+                <Button size="sm" onClick={analyze} disabled={analyzing || !aiConfigured}>
+                  {analyzing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Bot className="h-4 w-4 mr-1" />} Analyser le matching
+                </Button>
+              </div>
+              {analysis && (
+                <div className="rounded-md border border-border p-3 space-y-3 text-sm">
+                  <p>{analysis.result.reasoning}</p>
+                  {!!analysis.result.findings.length && (
+                    <div>
+                      <p className="font-medium">Constats</p>
+                      <ul className="list-disc pl-5 text-muted-foreground">{analysis.result.findings.map((f) => <li key={f}>{f}</li>)}</ul>
+                    </div>
+                  )}
+                  {!!analysis.result.recommendations.length && (
+                    <div>
+                      <p className="font-medium">Recommandations</p>
+                      <ul className="list-disc pl-5 text-muted-foreground">{analysis.result.recommendations.map((r) => <li key={r}>{r}</li>)}</ul>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Analyse établie sur {analysis.basedOn} avis. Elle conseille : rien n&apos;est modifié automatiquement à partir de ce texte.</p>
+                </div>
+              )}
+            </CardContent></Card>
           </section>
 
           <section className="space-y-3">

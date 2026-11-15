@@ -1,5 +1,6 @@
 import type { createServiceClient } from "@/lib/supabase/server";
 import { DEFAULT_MAX_ALERTS_PER_DAY, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "@/lib/matching";
+import { applyLearning, EMPTY_PROFILE, learnProfile, type LearnedProfile } from "@/lib/learning";
 import { annonceVersion } from "@/lib/review";
 import { subscriptionState } from "@/lib/subscription";
 import type { Annonce, ClientDemand } from "@/types/database";
@@ -12,6 +13,25 @@ const RECENT_ANNONCES = 200;
 
 type Client = ReturnType<typeof createServiceClient>;
 type Row = Record<string, unknown>;
+
+/**
+ * Ce que les avis déjà donnés par l'abonné nous apprennent, à partir de ses envois (`sends`).
+ * Une requête de plus, seulement s'il a donné des avis ; sans colonne client_feedback, profil vide.
+ *
+ * @example const profile = await loadLearnedProfile(supabase, sends)
+ */
+export async function loadLearnedProfile(supabase: Client, sends: Row[]): Promise<LearnedProfile> {
+  const rated = sends.filter((s) => typeof s.client_feedback === "string" && s.client_feedback);
+  if (!rated.length) return EMPTY_PROFILE;
+  const { data } = await supabase.from("annonces").select("id, quartier, type_bien, prix").in("id", rated.map((s) => s.annonce_id as string));
+  const byId = new Map(((data || []) as Row[]).map((a) => [a.id as string, a]));
+  return learnProfile(
+    rated.flatMap((s) => {
+      const a = byId.get(s.annonce_id as string);
+      return a ? [{ feedback: s.client_feedback as string, annonce: { quartier: a.quartier as string | null, type_bien: a.type_bien as string | null, prix: a.prix as number | null } }] : [];
+    })
+  );
+}
 
 /**
  * Annonces récentes qui correspondent aux critères de l'abonné et qu'il n'a pas encore reçues,
@@ -40,10 +60,12 @@ export async function pickForDemand(supabase: Client, demand: ClientDemand, now:
   // Même plancher que le cron : l'ancien plafond enregistré en base (30) ne s'applique plus.
   const cap = Math.max(demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY, DEFAULT_MAX_ALERTS_PER_DAY);
 
+  const profile = await loadLearnedProfile(supabase, (sends || []) as Row[]);
   const candidates: { annonce: Annonce; score: number }[] = [];
   for (const annonce of (rows || []) as unknown as Annonce[]) {
     if (known.has(`${annonce.id}:${annonceVersion(annonce)}`)) continue;
-    const match = matchDemand(annonce, demand);
+    // Le score tient compte de ce que l'abonné a déjà approuvé ou écarté.
+    const match = applyLearning(matchDemand(annonce, demand), annonce, profile);
     if (shouldSend(match, demand) || shouldSendForCheck(match, demand)) candidates.push({ annonce, score: match.score });
   }
   candidates.sort((a, b) => b.score - a.score);

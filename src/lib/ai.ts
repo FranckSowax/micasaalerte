@@ -248,14 +248,14 @@ export async function interpretClientMessage(
  *
  * @example const raw = await analyzeReportedAnnonce(reportAnalysisPrompt({ ... }))
  */
-export async function analyzeReportedAnnonce(prompt: string, apiKey?: string | null): Promise<string | null> {
+export async function analyzeReportedAnnonce(prompt: string, apiKey?: string | null, maxTokens = 500): Promise<string | null> {
   const { client, model, jsonMode, reasoningBudget, extraBody } = getAIProvider(apiKey);
   const response = await client.chat.completions.create(
     {
       model,
       ...(jsonMode ? { response_format: { type: "json_object" as const } } : {}),
       ...extraBody,
-      max_tokens: 500 + reasoningBudget,
+      max_tokens: maxTokens + reasoningBudget,
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
     },

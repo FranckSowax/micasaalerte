@@ -144,6 +144,12 @@ publication.
   chez tous (`annonces.status = archived`, `details.withdrawn`) ; l'agent peut aussi la retirer, la
   garder ou la remettre en ligne. Le modele d'IA donne un avis motive sur chaque annonce signalee
   (`details.report_analysis`) : c'est une aide, jamais une decision.
+- **Apprentissage du matching** (`src/lib/learning.ts`) : les avis de chaque abonne ajustent son score.
+  Un quartier, un type ou un niveau de prix ecarte au moins deux fois (et jamais juge pertinent) fait
+  baisser le score des annonces semblables ; un quartier juge pertinent le fait monter. Les criteres
+  obligatoires ne changent jamais. Applique par le cron, l'inscription et la modification des criteres.
+  L'ecran `/avis` montre ce qui a ete appris et propose une analyse d'ensemble par le modele d'IA
+  (raisonnement, constats, recommandations), sans donnee personnelle et sans effet automatique.
 - **Journal des envois** (ecran `/envois`) : chaque annonce envoyee a un abonne, son parcours
   (collecte, analyse, envoi, reaction) et le detail du matching recalcule avec ses criteres actuels.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
