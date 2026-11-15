@@ -225,7 +225,7 @@ const FEEDBACK_LABELS: Record<string, string> = {
 const tabOf = (a: ClientAnnonce): Tab => (a.status === "new" && a.doubts?.length ? "check" : a.status);
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "new", label: "À trier" },
+  { key: "new", label: "Pour vous" },
   { key: "check", label: "À vérifier" },
   { key: "kept", label: "Pertinentes" },
   { key: "removed", label: "Écartées" },
@@ -318,7 +318,11 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
     const sent = a.sentAt ? Date.parse(a.sentAt) : NaN;
     return !Number.isNaN(sent) && sent > lastVisit;
   };
-  const newCount = (space?.annonces || []).filter(isNew).length;
+  // Nouvelles annonces réparties par onglet : sûres (« Pour vous ») ou à une information près (« À vérifier »).
+  const newOnes = (space?.annonces || []).filter(isNew);
+  const newForYou = newOnes.filter((a) => tabOf(a) === "new").length;
+  const newToCheck = newOnes.filter((a) => tabOf(a) === "check").length;
+  const newCount = newForYou + newToCheck;
 
   const act = async (annonceId: string, action: "keep" | "remove" | "reset", feedback?: string) => {
     if (!space) return;
@@ -636,10 +640,30 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
         </div>
 
         {newCount > 0 && (
-          <p className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" role="status">
-            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {newCount} nouvelle{newCount > 1 ? "s" : ""} annonce{newCount > 1 ? "s" : ""} depuis votre dernière visite.
-          </p>
+          <div className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+            <p className="flex items-center gap-2 font-semibold">
+              <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {newCount} nouvelle{newCount > 1 ? "s" : ""} annonce{newCount > 1 ? "s" : ""} depuis votre dernière visite :
+            </p>
+            <ul className="mt-1 pl-6 space-y-0.5">
+              {newForYou > 0 && (
+                <li>
+                  <button type="button" className="underline underline-offset-2" onClick={() => setTab("new")}>
+                    {newForYou} correspond{newForYou > 1 ? "ent" : ""} à votre recherche
+                  </button>{" "}
+                  (Pour vous)
+                </li>
+              )}
+              {newToCheck > 0 && (
+                <li>
+                  <button type="button" className="underline underline-offset-2" onClick={() => setTab("check")}>
+                    {newToCheck} à vérifier
+                  </button>{" "}
+                  (une information manque)
+                </li>
+              )}
+            </ul>
+          </div>
         )}
 
         {/* La carte n'est chargée que sur demande : la liste des annonces arrive tout de suite. */}
@@ -661,7 +685,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground text-sm">
               {tab === "new"
-                ? "Aucune annonce à trier pour le moment. Vous recevrez un message WhatsApp dès qu'une annonce correspondra à votre recherche."
+                ? "Aucune annonce pour vous pour le moment. Vous recevrez un message WhatsApp dès qu'une annonce correspondra à votre recherche."
                 : tab === "check"
                   ? "Aucune annonce à vérifier. Ici arrivent les annonces qui correspondent à votre recherche mais à qui il manque une information, comme le prix."
                 : tab === "kept"
@@ -730,7 +754,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
                     {a.status !== "new" ? (
                       <Button variant="outline" className="w-full min-h-[48px]" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
-                        <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre à trier" : "Restaurer"}
+                        <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre dans Pour vous" : "Restaurer"}
                       </Button>
                     ) : reasonFor === a.id ? (
                       <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
