@@ -5,7 +5,7 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, ExternalLink, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
@@ -120,9 +120,14 @@ function Countdown({ endsAt, label, onEnd }: { endsAt: string; label: string; on
 
 type ClientStatus = "new" | "kept" | "removed";
 
+/** Onglets : « check » regroupe les annonces à trier auxquelles il manque une information. */
+type Tab = ClientStatus | "check";
+
 interface ClientAnnonce {
   id: string;
   status: ClientStatus;
+  /** Informations manquantes, en clair (ex. « Prix non indiqué »). */
+  doubts?: string[];
   sentAt: string | null;
   typeOffre: string | null;
   typeBien: string | null;
@@ -194,8 +199,12 @@ interface ClientSpace {
   annonces: ClientAnnonce[];
 }
 
-const TABS: { key: ClientStatus; label: string }[] = [
+/** Onglet d'une annonce : une annonce non triée avec un doute va dans « À vérifier ». */
+const tabOf = (a: ClientAnnonce): Tab => (a.status === "new" && a.doubts?.length ? "check" : a.status);
+
+const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "À trier" },
+  { key: "check", label: "À vérifier" },
   { key: "kept", label: "Retenues" },
   { key: "removed", label: "Supprimées" },
 ];
@@ -204,7 +213,7 @@ const TABS: { key: ClientStatus; label: string }[] = [
 export default function ClientSpacePage({ params }: { params: { token: string } }) {
   const [space, setSpace] = useState<ClientSpace | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "invalid" | "other_device" | "error">("loading");
-  const [tab, setTab] = useState<ClientStatus>("new");
+  const [tab, setTab] = useState<Tab>("new");
   const [busy, setBusy] = useState<string | null>(null);
   const [relink, setRelink] = useState<"idle" | "sending" | "sent" | "limited">("idle");
   const [panel, setPanel] = useState<"none" | "criteria" | "payment">("none");
@@ -338,12 +347,12 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   };
 
   const counts = useMemo(() => {
-    const c: Record<ClientStatus, number> = { new: 0, kept: 0, removed: 0 };
-    for (const a of space?.annonces || []) c[a.status]++;
+    const c: Record<Tab, number> = { new: 0, check: 0, kept: 0, removed: 0 };
+    for (const a of space?.annonces || []) c[tabOf(a)]++;
     return c;
   }, [space]);
 
-  const visible = useMemo(() => (space?.annonces || []).filter((a) => a.status === tab), [space, tab]);
+  const visible = useMemo(() => (space?.annonces || []).filter((a) => tabOf(a) === tab), [space, tab]);
 
   const markers = useMemo<MapMarker[]>(() => {
     const groups: Record<string, { lat: number; lon: number; lieu: string; items: ClientAnnonce[] }> = {};
@@ -524,7 +533,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           </div>
         )}
 
-        <div className="flex gap-2" role="tablist">
+        <div className="flex flex-wrap gap-2" role="tablist">
           {TABS.map((t) => (
             <Button key={t.key} role="tab" aria-selected={tab === t.key} variant={tab === t.key ? "default" : "outline"} size="sm" onClick={() => setTab(t.key)}>
               {t.label} ({counts[t.key]})
@@ -546,6 +555,8 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
             <CardContent className="p-8 text-center text-muted-foreground text-sm">
               {tab === "new"
                 ? "Aucune annonce à trier pour le moment. Vous recevrez un message WhatsApp dès qu'une annonce correspondra à votre recherche."
+                : tab === "check"
+                  ? "Aucune annonce à vérifier. Ici arrivent les annonces qui correspondent à votre recherche mais à qui il manque une information, comme le prix."
                 : tab === "kept"
                   ? "Vous n'avez encore retenu aucune annonce."
                   : "Aucune annonce supprimée."}
@@ -557,6 +568,12 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
               <Card key={a.id} className="overflow-hidden">
                 <PhotoGallery photos={a.images?.length ? a.images : a.image ? [a.image] : []} />
                 <CardContent className="p-4 space-y-3">
+                  {!!a.doubts?.length && (
+                    <p className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+                      <span>{a.doubts.join(" · ")} — à vérifier auprès de l&apos;annonceur.</span>
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     {a.typeOffre && <Badge>{getTypeOffreLabel(a.typeOffre)}</Badge>}
                     {a.typeBien && <Badge variant="outline">{getTypeBienLabel(a.typeBien)}</Badge>}

@@ -9,6 +9,7 @@ import {
   isQuietHour,
   matchDemand,
   shouldSend,
+  shouldSendForCheck,
   startOfLocalDayIso,
 } from "@/lib/matching";
 import { isAuthorizedCron } from "@/lib/cron-auth";
@@ -196,6 +197,7 @@ async function handleCron(request: Request) {
     messagesSent: 0,
     annoncesAdded: 0,
     heldForReview: 0,
+    sentForCheck: 0,
     skippedQuiet: 0,
     capped: 0,
     expired: 0,
@@ -272,7 +274,14 @@ async function handleCron(request: Request) {
         const match = matchDemand(annonce, demand);
         if (!match.eligible) continue;
         if (match.needsReview) {
-          stats.heldForReview++;
+          // Une seule information manquante : l'annonce part chez l'abonné, qui la trouve dans son
+          // onglet « À vérifier ». Plus d'un manque, ou annonce presque vide : elle reste chez l'agent.
+          if (shouldSendForCheck(match, demand)) {
+            candidates.push({ annonce, score: match.score });
+            stats.sentForCheck++;
+          } else {
+            stats.heldForReview++;
+          }
           continue;
         }
         if (shouldSend(match, demand)) candidates.push({ annonce, score: match.score });

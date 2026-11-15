@@ -1,7 +1,10 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
+import { matchDemand } from "@/lib/matching";
 import { MAX_PER_ANNONCE } from "@/lib/photos";
+import { doubtLabels } from "@/lib/review";
+import type { Annonce, ClientDemand } from "@/types/database";
 import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -57,6 +60,9 @@ export async function GET(request: Request, { params }: { params: { token: strin
     items.push({
       id: annonce.id,
       status: (send.client_status as string) || "new",
+      // Informations manquantes à vérifier auprès de l'annonceur (onglet « À vérifier »),
+      // recalculées avec les critères actuels de l'abonné.
+      doubts: doubtLabels(matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand).decisiveDoubts),
       sentAt: send.sent_at,
       typeOffre: annonce.type_offre,
       typeBien: annonce.type_bien,

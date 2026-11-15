@@ -45,6 +45,10 @@ export interface MatchResult {
   uncertain: string[];
   /** Doute sur le prix, la ville ou la transaction : à valider par un humain avant envoi. */
   needsReview: boolean;
+  /** Le doute se limite à une seule information manquante : envoyée à l'abonné, onglet « À vérifier ». */
+  clientCanCheck: boolean;
+  /** Informations décisives manquantes (prix, ville, transaction, contenu). */
+  decisiveDoubts: string[];
   score: number;
   /** Ce qui a pesé dans le score, pour l'explication. */
   reasons: string[];
@@ -248,13 +252,18 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
   // Type ou nombre de chambres inconnus : l'annonce reste éligible, mais passe après les autres.
   score -= UNCERTAIN_PENALTY * uncertain.filter((u) => u === "type" || u === "chambres").length;
 
-  const needsReview = uncertain.some((u) => u === "prix" || u === "ville" || u === "transaction" || u === "contenu");
+  const decisive = uncertain.filter((u) => u === "prix" || u === "ville" || u === "transaction" || u === "contenu");
+  const needsReview = decisive.length > 0;
 
   return {
     eligible: blockedBy.length === 0,
     blockedBy,
     uncertain,
     needsReview,
+    // Une seule information décisive manque, et l'annonce n'est pas presque vide : l'abonné peut
+    // la vérifier lui-même auprès de l'annonceur. Au-delà, elle reste chez l'agent.
+    clientCanCheck: decisive.length === 1 && decisive[0] !== "contenu",
+    decisiveDoubts: decisive,
     score: Math.round(Math.min(100, Math.max(0, score))),
     reasons,
   };
@@ -263,6 +272,16 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
 /** Décision d'envoi automatique : éligible, pas de doute décisif, score au-dessus du seuil. */
 export function shouldSend(match: MatchResult, demand: ClientDemand): boolean {
   return match.eligible && !match.needsReview && match.score >= demandPreferences(demand).minScore;
+}
+
+/**
+ * Envoi dans l'onglet « À vérifier » de l'abonné : l'annonce correspond, le score suffit, et il ne
+ * manque qu'une information décisive (prix, lieu ou type de transaction) — pas plus.
+ *
+ * @example if (shouldSendForCheck(m, demand)) ajouter(annonce)
+ */
+export function shouldSendForCheck(match: MatchResult, demand: ClientDemand): boolean {
+  return match.eligible && match.clientCanCheck && match.score >= demandPreferences(demand).minScore;
 }
 
 /** Heure locale (0-23) dans le fuseau des alertes. */

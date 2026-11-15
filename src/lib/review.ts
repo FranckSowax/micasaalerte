@@ -18,6 +18,15 @@ const DOUBT_LABELS: Record<string, string> = {
   contenu: "Annonce trop peu précise",
 };
 
+/**
+ * Doutes d'une annonce, en clair, pour l'agent comme pour l'abonné.
+ *
+ * @example doubtLabels(["prix"]) // ["Prix non indiqué"]
+ */
+export function doubtLabels(doubts: string[]): string[] {
+  return doubts.map((d) => DOUBT_LABELS[d] || d);
+}
+
 export interface SendKey {
   demand_id: string;
   annonce_id: string;

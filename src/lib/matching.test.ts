@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Annonce, ClientDemand } from "@/types/database";
-import { isQuietHour, localHour, matchDemand, shouldSend, startOfLocalDayIso } from "./matching";
+import { isQuietHour, localHour, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "./matching";
 
 function annonce(overrides: Record<string, unknown> = {}): Annonce {
   return {
@@ -62,6 +62,27 @@ describe("critères bloquants", () => {
 
     const complete = annonce({ type_offre: "vente", type_bien: "maison", prix: 70000000, quartier: null, nb_chambres: 4 });
     expect(matchDemand(complete, d).uncertain).not.toContain("contenu");
+  });
+
+  it("une seule information manquante part chez l'abonné pour vérification, pas plus", () => {
+    const d = demand();
+    // Prix absent seulement : l'abonné peut le demander à l'annonceur.
+    const sansPrix = matchDemand(annonce({ prix: null }), d);
+    expect(sansPrix.clientCanCheck).toBe(true);
+    expect(shouldSendForCheck(sansPrix, d)).toBe(true);
+    expect(shouldSend(sansPrix, d)).toBe(false);
+
+    // Prix et transaction absents : deux manques, l'annonce reste chez l'agent.
+    const deuxManques = matchDemand(annonce({ prix: null, type_offre: null }), d);
+    expect(deuxManques.needsReview).toBe(true);
+    expect(shouldSendForCheck(deuxManques, d)).toBe(false);
+
+    // Annonce presque vide : jamais envoyée d'office.
+    const vide = matchDemand(annonce({ type_bien: null, prix: null, quartier: null, nb_chambres: null }), demand({ filter_prix_max: null, filter_nb_chambres_min: null }));
+    expect(shouldSendForCheck(vide, d)).toBe(false);
+
+    // Annonce complète : envoi normal, rien à vérifier.
+    expect(matchDemand(annonce(), d).clientCanCheck).toBe(false);
   });
 
   it("équipements souhaités : une annonce qui n'en parle pas reste envoyée", () => {
