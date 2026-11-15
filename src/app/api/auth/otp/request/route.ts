@@ -16,7 +16,13 @@ const PER_IP = 10;
 const QUARTER_MS = 15 * 60_000;
 const HOUR_MS = 60 * 60_000;
 
-const RequestSchema = z.object({ phone: z.string().max(30) });
+const SIGNUPS_PER_HOUR = 60; // tous visiteurs confondus : l'inscription écrit à des numéros inconnus
+
+const RequestSchema = z.object({
+  phone: z.string().max(30),
+  // Inscription d'un nouvel abonné : le code part vers un numéro encore inconnu, pour prouver qu'il est bien le sien.
+  signup: z.boolean().optional(),
+});
 
 // Réponse identique que le numéro soit enregistré ou non : on ne révèle pas qui a un compte.
 const GENERIC = { success: true, message: "Si ce numéro est enregistré, un code vient d'être envoyé sur WhatsApp." };
@@ -37,7 +43,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Connexion par WhatsApp indisponible pour le moment." }, { status: 503 });
   }
 
-  const known = (await findAgentByPhone(phone)) !== null || (await clientExists(phone));
+  const signup = parsed.success && parsed.data.signup === true;
+  const isClient = await clientExists(phone);
+  if (signup) {
+    if (isClient) {
+      return NextResponse.json(
+        { error: "Ce numéro est déjà inscrit. Connectez-vous pour ouvrir votre espace.", code: "exists" },
+        { status: 409 }
+      );
+    }
+    if (!checkRateLimit("otp:signup:global", SIGNUPS_PER_HOUR, HOUR_MS).allowed) {
+      return NextResponse.json({ error: "Trop d'inscriptions en cours. Réessayez plus tard." }, { status: 429 });
+    }
+  }
+
+  const known = signup || isClient || (await findAgentByPhone(phone)) !== null;
   const code = generateCode();
   const { cookie } = sealChallenge(phone, code, secret);
 
@@ -58,5 +78,5 @@ export async function POST(request: Request) {
     path: "/",
     maxAge: Math.floor(OTP_TTL_MS / 1000),
   });
-  return NextResponse.json(GENERIC);
+  return NextResponse.json(signup ? { success: true, message: "Un code vient d'être envoyé sur votre WhatsApp." } : GENERIC);
 }

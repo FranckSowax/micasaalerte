@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, ExternalLink, Home, Loader2, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Trash2, Wallet, X } from "lucide-react";
 import { CriteriaFields, criteriaPayload, EMPTY_CRITERIA, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
@@ -99,6 +99,23 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
   const [reference, setReference] = useState("");
   const [plan, setPlan] = useState("day");
+  const [leaving, setLeaving] = useState(false);
+
+  // Déconnexion : l'appareil n'est plus lié à l'espace ; retour par le lien WhatsApp ou par un code.
+  const logout = async () => {
+    setLeaving(true);
+    try {
+      const res = await fetch(`/api/client/${params.token}/logout`, { method: "POST" });
+      if (res.ok) {
+        window.location.assign("/login");
+        return;
+      }
+      setNotice({ ok: false, text: "Déconnexion impossible. Réessayez." });
+    } catch {
+      setNotice({ ok: false, text: "Connexion impossible. Réessayez." });
+    }
+    setLeaving(false);
+  };
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -264,7 +281,10 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
             ) : state === "invalid" ? (
               <>
                 <h1 className="text-xl font-bold">Lien invalide ou expiré</h1>
-                <p className="text-muted-foreground text-sm">Utilisez le dernier lien reçu sur WhatsApp.</p>
+                <p className="text-muted-foreground text-sm">Utilisez le dernier lien reçu sur WhatsApp, ou reconnectez-vous avec un code.</p>
+                <a href="/login" className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium w-full">
+                  Me connecter
+                </a>
               </>
             ) : (
               <>
@@ -282,11 +302,14 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
     <div className="min-h-screen bg-background px-4 py-6">
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
-          <Home className="h-7 w-7 text-primary" />
-          <div>
+          <Home className="h-7 w-7 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
             <p className="text-lg font-bold text-primary leading-tight">Mi Casa Alerte</p>
-            <p className="text-sm text-muted-foreground">{space.clientName ? `Les annonces de ${space.clientName}` : "Vos annonces"}</p>
+            <p className="text-sm text-muted-foreground truncate">{space.clientName ? `Les annonces de ${space.clientName}` : "Vos annonces"}</p>
           </div>
+          <Button variant="outline" size="sm" onClick={logout} disabled={leaving}>
+            {leaving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />} Déconnexion
+          </Button>
         </header>
 
         {space.subscription && (() => {

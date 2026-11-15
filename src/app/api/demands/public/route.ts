@@ -2,6 +2,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
 import { BUDGET_ISSUE, budgetIsCoherent, CRITERIA_FIELD_MESSAGES, criteriaShape, criteriaToRow } from "@/lib/demand-schema";
 import { generateAccessToken } from "@/lib/client-access";
+import { checkCode, normalizePhone, OTP_COOKIE, OTP_MAX_ATTEMPTS, OTP_TTL_MS, readChallenge } from "@/lib/login-otp";
+import { otpSecret } from "@/lib/login-otp-server";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -26,8 +29,10 @@ const DemandSchema = z
     // par WhatsApp, donc le chatbot retrouve la demande créée par le formulaire.
     client_phone: z
       .string()
-      .transform((v) => v.replace(/[\s.\-()+]/g, ""))
+      .transform((v) => normalizePhone(v))
       .pipe(z.string().regex(/^\d{8,15}$/)),
+    // Code reçu sur WhatsApp : prouve que le numéro appartient bien à la personne qui s'inscrit.
+    code: z.string().trim().regex(/^\d{6}$/),
     ...criteriaShape,
   })
   .refine(budgetIsCoherent, BUDGET_ISSUE);
@@ -36,6 +41,7 @@ const FIELD_MESSAGES: Record<string, string> = {
   userId: "Lien invalide",
   client_name: "Nom invalide (2 à 80 caractères)",
   client_phone: "Numéro WhatsApp invalide. Format : +24177123456",
+  code: "Le code comporte 6 chiffres.",
   ...CRITERIA_FIELD_MESSAGES,
 };
 
@@ -79,6 +85,28 @@ export async function POST(request: Request) {
   );
   if (!accountCheck.allowed) return tooManyRequests(accountCheck.retryAfterSeconds);
 
+  // Le code doit avoir été envoyé à ce numéro précis (défi signé déposé par /api/auth/otp/request).
+  const otpCookie = cookies().get(OTP_COOKIE)?.value;
+  const challenge = readChallenge(otpCookie);
+  const secret = otpSecret();
+  if (!challenge || !secret) {
+    return NextResponse.json({ error: "Code expiré. Demandez un nouveau code." }, { status: 400 });
+  }
+  if (!checkRateLimit(`otp:verify:${challenge.nonce}`, OTP_MAX_ATTEMPTS, OTP_TTL_MS).allowed) {
+    cookies().delete(OTP_COOKIE);
+    return NextResponse.json({ error: "Trop d'essais. Demandez un nouveau code." }, { status: 429 });
+  }
+  const check = checkCode(otpCookie, input.code, secret);
+  if (!check.ok) {
+    return NextResponse.json(
+      { error: check.reason === "expired" ? "Code expiré. Demandez un nouveau code." : "Code incorrect." },
+      { status: 401 }
+    );
+  }
+  if (check.challenge.phone !== input.client_phone) {
+    return NextResponse.json({ error: "Le numéro a changé. Demandez un nouveau code." }, { status: 400 });
+  }
+
   const supabase = createServiceClient();
 
   // Verify admin user exists
@@ -95,14 +123,19 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const { filters, zone } = criteriaToRow(input);
 
-  // Première inscription de ce numéro ? L'essai gratuit de 24 h démarre alors (valeur par
-  // défaut de la colonne trial_ends_at) ; une réinscription ne le relance pas.
-  const { data: existing } = await supabase
+  // Numéro déjà inscrit : on ne réécrit pas ses critères depuis le formulaire public. L'abonné se
+  // connecte (code WhatsApp) et les modifie dans son espace. L'essai gratuit ne redémarre donc jamais.
+  const { data: existingRows } = await supabase
     .from("client_demands")
     .select("id")
-    .eq("user_id", input.userId)
-    .eq("client_phone", input.client_phone)
-    .maybeSingle();
+    .in("client_phone", [input.client_phone, `+${input.client_phone}`])
+    .limit(1);
+  if (existingRows?.length) {
+    return NextResponse.json(
+      { error: "Ce numéro est déjà inscrit. Connectez-vous pour ouvrir votre espace.", code: "exists" },
+      { status: 409 }
+    );
+  }
 
   // Upsert client demand
   const base = {
@@ -117,13 +150,11 @@ export async function POST(request: Request) {
   const save = (row: Record<string, unknown>) =>
     supabase.from("client_demands").upsert(row, { onConflict: "user_id,client_phone" }).select("id").single();
 
-  // WHY: le lien de l'espace personnel n'est remis à l'écran qu'à la toute première
-  // inscription. Pour un numéro déjà inscrit, le lien ne part que sur son WhatsApp : sinon
-  // n'importe qui ouvrirait l'espace d'un client en ressaisissant son numéro.
-  const token = existing ? null : generateAccessToken();
+  // Le numéro vient d'être prouvé par le code : le lien de l'espace peut être remis à l'écran.
+  const token = generateAccessToken();
 
-  let { data, error } = await save({ ...base, ...zone, ...(token ? { access_token: token } : {}) });
-  let linkToken = token;
+  let { data, error } = await save({ ...base, ...zone, access_token: token });
+  let linkToken: string | null = token;
   // Base sans les colonnes de secteur ou de lien (migration non exécutée) : on enregistre sans elles.
   if (error) {
     ({ data, error } = await save(base));
@@ -152,10 +183,11 @@ export async function POST(request: Request) {
   );
   if (convError) console.error("Chatbot conversation upsert failed:", convError.message);
 
+  cookies().delete(OTP_COOKIE);
   return NextResponse.json({
     success: true,
     id: data.id,
-    isNew: !existing,
+    isNew: true,
     // Chemin relatif : le navigateur du client reste sur le domaine où il a rempli le formulaire.
     spacePath: linkToken ? `/c/${linkToken}` : null,
   });

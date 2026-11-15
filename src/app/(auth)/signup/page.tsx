@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SubscriberSignup } from "@/components/subscriber-signup";
 import { ownerUserId } from "@/lib/owner";
 import { AgentSignupForm } from "./agent-form";
 
-// « Créer un compte » : un visiteur est un futur abonné. Il est conduit au formulaire d'inscription
-// (nom, numéro WhatsApp, critères) qui ouvre son espace client — jamais vers l'administration.
+// « Créer un compte » : un visiteur est un futur abonné. Il s'inscrit ici (nom, numéro WhatsApp
+// confirmé par code, critères) et arrive dans son espace client — jamais dans l'administration.
 // Le compte agent se crée à part, par email : /signup?agent=1.
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export default async function SignupPage({ searchParams }: { searchParams: { age
   if (searchParams.agent === "1") return <AgentSignupForm />;
 
   const ownerId = await ownerUserId();
-  if (ownerId) redirect(`/demande/${ownerId}`);
+  if (ownerId) return <SubscriberSignup userId={ownerId} />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">

@@ -61,7 +61,8 @@ export function Sidebar() {
         <span className="text-lg font-bold text-primary">Mi Casa Alerte</span>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      {/* Défilement interne : sur un petit écran, le bouton Déconnexion reste visible en bas. */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (

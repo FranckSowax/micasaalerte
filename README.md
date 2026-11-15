@@ -130,8 +130,11 @@ publication.
   Un numero d'agent (Parametres) ouvre l'administration ; un numero d'abonne ouvre son espace client sur
   l'appareil (nouveau lien, ancien invalide). L'email et le mot de passe restent le secours de l'agent,
   indispensables si la session WhatsApp est deconnectee.
-- **Inscription** : `/signup` conduit un visiteur au formulaire d'abonne du compte principal
-  (`OWNER_USER_ID`, sinon le plus ancien compte agent). Un compte agent se cree par email : `/signup?agent=1`.
+- **Inscription d'un abonne** (`src/components/subscriber-signup.tsx`) : `/signup` affiche le formulaire
+  du compte principal (`OWNER_USER_ID`, sinon le plus ancien compte agent) ; `/demande/<id>` celui d'un
+  agent precis. Deux etapes : criteres, puis code recu sur WhatsApp qui prouve le numero. Un numero deja
+  inscrit est refuse et renvoye vers `/login` (il modifie ses criteres dans son espace). « Deconnexion »
+  dans l'espace client delie l'appareil. Un compte agent se cree par email : `/signup?agent=1`.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
   trois formules : 1 jour a 1 000 FCFA (48 h pendant la promo de lancement, constante `LAUNCH_PROMO`),
   7 jours a 5 000 FCFA, 30 jours a 15 000 FCFA. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp
