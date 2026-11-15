@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { Nunito_Sans } from "next/font/google";
-import { ArrowLeft, CheckCircle2, Home, Loader2, MessageCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, MessageCircle } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, criteriaSummary, EMPTY_CRITERIA, type CriteriaValue } from "@/components/criteria-form";
 import { planOffer, SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 
@@ -186,8 +187,7 @@ export function SubscriberSignup({ userId }: { userId: string }) {
     <div className={`theme-light ${font.className} min-h-screen px-4 py-6 text-[17px]`}>
       <div className={`mx-auto space-y-5 ${narrow ? "max-w-md" : "max-w-xl"}`}>
         <div className="flex items-center justify-center gap-2">
-          <Home className="h-7 w-7 text-primary" aria-hidden="true" />
-          <span className="text-xl font-extrabold text-primary">Mi Casa Alerte</span>
+          <BrandLogo variant="green" className="h-12 w-auto" priority />
         </div>
         {children}
       </div>

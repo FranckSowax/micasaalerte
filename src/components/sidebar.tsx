@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,6 @@ import {
   MessageSquare,
   Settings,
   LogOut,
-  Home,
   Menu,
   X,
   Database,
@@ -79,8 +79,7 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-2 px-6 py-5 border-b border-border">
-        <Home className="h-7 w-7 text-primary" />
-        <span className="text-lg font-bold text-primary">Mi Casa Alerte</span>
+        <BrandLogo className="h-10 w-auto" priority />
       </div>
 
       {/* Défilement interne : sur un petit écran, le bouton Déconnexion reste visible en bas. */}

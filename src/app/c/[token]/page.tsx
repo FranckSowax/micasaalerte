@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -514,9 +515,8 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
     <div className={`theme-light ${font.className} min-h-screen px-4 py-6`}>
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
-          <Home className="h-7 w-7 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-bold text-primary leading-tight">Mi Casa Alerte</p>
+            <BrandLogo variant="green" className="h-11 w-auto" priority />
             <p className="text-sm text-muted-foreground truncate">{space.clientName ? `Les annonces de ${space.clientName}` : "Vos annonces"}</p>
           </div>
           <Button variant="outline" size="sm" onClick={logout} disabled={leaving}>

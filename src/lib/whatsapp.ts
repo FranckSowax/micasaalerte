@@ -38,7 +38,7 @@ export function formatDigestMessage(annonces: Annonce[]): string {
  */
 export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean; resend?: boolean; welcome?: boolean }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
-  const lines = ["*Mi Casa Alerte*", "", hello];
+  const lines = ["*Mi Casa Gabon*", "", hello];
   const n = params.count || 0;
   if (params.renewed) {
     lines.push("Voici votre nouveau lien personnel. L'ancien ne fonctionne plus.");
@@ -70,7 +70,7 @@ export function formatClientLinkMessage(params: { name?: string | null; count?: 
 export function formatAccessEndedMessage(params: { name?: string | null; trial: boolean; link: string; offers: string[] }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
   return [
-    "*Mi Casa Alerte*",
+    "*Mi Casa Gabon*",
     "",
     hello,
     params.trial ? "Votre essai gratuit de 24 h est terminé." : "Votre abonnement est terminé.",
@@ -94,7 +94,7 @@ export function formatSubscriptionActivatedMessage(params: { name?: string | nul
   const selection =
     n > 1 ? `${n} annonces correspondent déjà à votre recherche.` : n === 1 ? "Une annonce correspond déjà à votre recherche." : null;
   return [
-    "*Mi Casa Alerte*",
+    "*Mi Casa Gabon*",
     "",
     hello,
     "Votre paiement est validé, merci.",
@@ -113,7 +113,7 @@ export function formatSubscriptionActivatedMessage(params: { name?: string | nul
  */
 export function formatPaymentDeclaredMessage(params: { client: string; amount: number; days: number; reference: string; link: string }): string {
   return [
-    "*Mi Casa Alerte — paiement à vérifier*",
+    "*Mi Casa Gabon — paiement à vérifier*",
     "",
     `${params.client} déclare avoir payé ${params.amount.toLocaleString("fr-FR")} FCFA (${params.days} jour${params.days > 1 ? "s" : ""}).`,
     `Référence à retrouver dans Airtel Money : *${params.reference}*`,

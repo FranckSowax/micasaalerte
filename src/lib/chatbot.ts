@@ -7,7 +7,7 @@ import type { ChatbotConversation, ClientDemand } from "@/types/database";
 
 const ONBOARDING_MESSAGES: Record<string, string> = {
   welcome:
-    "Bienvenue sur *Mi Casa Alerte* ! 🏠\nJe vais vous aider à trouver le bien idéal à Libreville.\n\nComment vous appelez-vous ?",
+    "Bienvenue sur *Mi Casa Gabon* ! 🏠\nJe vais vous aider à trouver le bien idéal à Libreville.\n\nComment vous appelez-vous ?",
   onboarding_type_offre:
     "Que recherchez-vous ?\n\n1️⃣ Location\n2️⃣ Vente\n3️⃣ Colocation\n\nRépondez avec le numéro ou le mot.",
   onboarding_type_bien:

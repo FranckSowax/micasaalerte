@@ -39,7 +39,7 @@ function getAIProvider(legacyKey?: string | null): AIProvider {
       client: new OpenAI({
         apiKey: openRouterKey,
         baseURL: "https://openrouter.ai/api/v1",
-        defaultHeaders: { "X-Title": "Mi Casa Alerte" },
+        defaultHeaders: { "X-Title": "Mi Casa Gabon" },
       }),
       model: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
       jsonMode: true,

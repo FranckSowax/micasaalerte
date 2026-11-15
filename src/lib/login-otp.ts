@@ -87,5 +87,5 @@ export function checkCode(cookie: string | null | undefined, code: string, secre
 
 /** Message WhatsApp qui porte le code. */
 export function formatLoginCodeMessage(code: string): string {
-  return ["*Mi Casa Alerte*", "", `Votre code de connexion : *${code}*`, "Il est valable 5 minutes. Ne le partagez avec personne."].join("\n");
+  return ["*Mi Casa Gabon*", "", `Votre code de connexion : *${code}*`, "Il est valable 5 minutes. Ne le partagez avec personne."].join("\n");
 }

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Home } from "lucide-react";
 
 /** Création d'un compte agent (administration) par email. Les abonnés s'inscrivent ailleurs, sans compte. */
 export function AgentSignupForm() {
@@ -68,8 +68,7 @@ export function AgentSignupForm() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4">
-            <Home className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-primary">Mi Casa Alerte</span>
+            <BrandLogo variant="green" className="h-14 w-auto" priority />
           </Link>
           <CardTitle className="text-xl">Compte agent</CardTitle>
           <CardDescription>Réservé aux agents qui gèrent les annonces et les abonnés</CardDescription>

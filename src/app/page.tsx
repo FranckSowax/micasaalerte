@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Home,
   Search,
   Brain,
   MessageSquare,
@@ -19,8 +19,7 @@ export default function LandingPage() {
       <nav className="border-b border-border">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Home className="h-7 w-7 text-primary" />
-            <span className="text-xl font-bold text-primary">Mi Casa Alerte</span>
+            <BrandLogo className="h-10 w-auto" priority />
           </div>
           <div className="flex items-center gap-3">
             <Link href="/login">
@@ -41,7 +40,7 @@ export default function LandingPage() {
             <span className="text-primary">annonce immobilière</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Mi Casa Alerte scrape automatiquement les groupes Facebook, analyse les annonces avec l&apos;IA
+            Mi Casa Gabon scrape automatiquement les groupes Facebook, analyse les annonces avec l&apos;IA
             et vous les envoie sur WhatsApp en temps réel.
           </p>
           <div className="flex items-center justify-center gap-4">
@@ -166,7 +165,7 @@ export default function LandingPage() {
             Prêt à ne plus rater d&apos;annonces ?
           </h2>
           <p className="text-muted-foreground mb-8">
-            Rejoignez Mi Casa Alerte et trouvez votre prochain bien immobilier avant tout le monde.
+            Rejoignez Mi Casa Gabon et trouvez votre prochain bien immobilier avant tout le monde.
           </p>
           <Link href="/signup">
             <Button size="lg" className="text-lg px-8">
@@ -181,11 +180,10 @@ export default function LandingPage() {
       <footer className="border-t border-border py-8 px-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Home className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium text-primary">Mi Casa Alerte</span>
+            <BrandLogo className="h-7 w-auto" />
           </div>
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Mi Casa Alerte. Tous droits réservés.
+            &copy; {new Date().getFullYear()} Mi Casa Gabon. Tous droits réservés.
           </p>
         </div>
       </footer>

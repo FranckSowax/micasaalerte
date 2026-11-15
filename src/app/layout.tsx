@@ -5,11 +5,15 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Mi Casa Alerte - Suivi intelligent d'annonces immobilières",
+  title: "Mi Casa Gabon - Suivi intelligent d'annonces immobilières",
   description:
     "Scraping automatique, analyse IA et alertes WhatsApp pour les annonces immobilières au Gabon.",
   icons: {
-    icon: "/favicon.svg",
+    icon: [
+      { url: "/icon-64.png", sizes: "64x64", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
 };
 
