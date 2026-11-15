@@ -7,7 +7,8 @@ import { activeReports, isReport, mainReason, shouldAutoWithdraw, withdrawalOf, 
 import { doubtLabels } from "@/lib/review";
 import { pickForDemand, recordSelection } from "@/lib/selection";
 import type { Annonce, ClientDemand } from "@/types/database";
-import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
+import { currentOrderReference, paymentMerchant } from "@/lib/payment-reference";
+import { subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import type { createServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -126,6 +127,7 @@ export async function GET(request: Request, { params }: { params: { token: strin
     .limit(1);
 
   const state = subscriptionState(demand as Parameters<typeof subscriptionState>[0]);
+  const orderRef = await currentOrderReference(supabase, demand.id as string);
 
   return withDeviceCookie(
     NextResponse.json({
@@ -137,7 +139,8 @@ export async function GET(request: Request, { params }: { params: { token: strin
         days: SUBSCRIPTION_DAYS,
         plans: SUBSCRIPTION_PLANS,
         trialHours: TRIAL_HOURS,
-        paymentInfo: paymentInfo(),
+        // Paiement Airtel Money : code marchand et référence de commande propre à ce paiement.
+        payment: orderRef ? { reference: orderRef, ...paymentMerchant() } : null,
         pendingPayment: !!pending?.length,
       },
       criteria: {

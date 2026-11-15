@@ -134,7 +134,3 @@ export function formatDeadline(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Consignes de paiement affichées au client (numéro Mobile Money, nom du bénéficiaire). */
-export function paymentInfo(): string | null {
-  return process.env.SUBSCRIPTION_PAYMENT_INFO?.trim() || null;
-}

@@ -5,9 +5,8 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
-import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
 import { formatDate, formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
@@ -159,7 +158,7 @@ interface Subscription {
   days: number;
   plans?: { id: string; label: string; price: number; days: number; note?: string }[];
   trialHours: number;
-  paymentInfo: string | null;
+  payment?: { reference: string; operator: string; ussd: string; code: string; name: string; contact: string } | null;
   pendingPayment: boolean;
 }
 
@@ -238,8 +237,19 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   const [relink, setRelink] = useState<"idle" | "sending" | "sent" | "limited">("idle");
   const [panel, setPanel] = useState<"none" | "criteria" | "payment">("none");
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
-  const [reference, setReference] = useState("");
   const [plan, setPlan] = useState("day");
+  const [copied, setCopied] = useState(false);
+
+  /** Copie la référence de commande, à coller dans le menu Airtel Money. */
+  const copyReference = async (reference: string) => {
+    try {
+      await navigator.clipboard.writeText(reference);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Presse-papiers refusé : la référence reste affichée en grand, à recopier.
+    }
+  };
   const [leaving, setLeaving] = useState(false);
   // Annonce pour laquelle l'abonné choisit la raison de « Pas pertinente ».
   const [reasonFor, setReasonFor] = useState<string | null>(null);
@@ -350,12 +360,11 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
       const res = await fetch(`/api/client/${params.token}/payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference, plan }),
+        body: JSON.stringify({ plan }),
       });
       if (res.ok) {
         setPanel("none");
-        setReference("");
-        setNotice({ ok: true, text: "Paiement déclaré. Vous recevrez un message WhatsApp dès sa validation." });
+        setNotice({ ok: true, text: "Paiement déclaré. Dès qu'il est vérifié, vous recevez un message WhatsApp et votre abonnement démarre." });
         await load();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -530,15 +539,39 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
                         </button>
                       ))}
                     </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-line">
-                      {sub.paymentInfo
-                        ? `1. Envoyez ${chosen.price.toLocaleString("fr-FR")} FCFA par Mobile Money :\n${sub.paymentInfo}\n2. Saisissez ci-dessous la référence de la transaction reçue par SMS.`
-                        : "Contactez votre agent pour régler l'abonnement, puis saisissez ci-dessous la référence de la transaction."}
-                    </p>
-                    <Input placeholder="Référence de la transaction" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={60} />
-                    <Button className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={declarePayment} disabled={saving || reference.trim().length < 4}>
-                      {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />} J&apos;ai payé
-                    </Button>
+                    {sub.payment ? (
+                      <>
+                        <div className="rounded-xl border-2 border-primary bg-primary/10 px-4 py-3 text-center">
+                          <p className="text-sm font-semibold">Votre référence de commande</p>
+                          <p className="text-3xl font-extrabold tracking-wider text-primary" translate="no">{sub.payment.reference}</p>
+                          <Button variant="outline" size="sm" className="mt-2" onClick={() => copyReference(sub.payment!.reference)}>
+                            <Copy className="h-4 w-4 mr-1" /> {copied ? "Copiée" : "Copier la référence"}
+                          </Button>
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-semibold mb-2">Payez par {sub.payment.operator} :</p>
+                          <ol className="space-y-2 text-sm list-decimal pl-5">
+                            <li>Composez <span className="font-bold" translate="no">{sub.payment.ussd}</span> sur votre téléphone.</li>
+                            <li>Tapez <span className="font-bold">3</span> : Paiement.</li>
+                            <li>Tapez <span className="font-bold">10</span> : Autres.</li>
+                            <li>Entrez le code marchand <span className="font-bold" translate="no">{sub.payment.code}</span> ({sub.payment.name}).</li>
+                            <li>Entrez le montant : <span className="font-bold">{chosen.price.toLocaleString("fr-FR")}</span> FCFA.</li>
+                            <li>Entrez en référence : <span className="font-bold" translate="no">{sub.payment.reference}</span>.</li>
+                            <li>Validez avec votre code secret Airtel Money.</li>
+                          </ol>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">
+                          La référence est indispensable : sans elle, votre paiement ne peut pas être rattaché à votre abonnement. Un souci ? Appelez {sub.payment.name} au {sub.payment.contact}.
+                        </p>
+                        <Button className="w-full min-h-[48px] bg-green-600 hover:bg-green-700 text-white" onClick={declarePayment} disabled={saving}>
+                          {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />} J&apos;ai payé avec cette référence
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Le paiement est indisponible pour le moment. Réessayez dans quelques minutes.</p>
+                    )}
                   </div>
                 )}
               </CardContent>

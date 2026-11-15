@@ -269,7 +269,7 @@ export default function ClientsPage() {
                     </div>
                     {payment && (
                       <p className="text-sm text-amber-400 mb-1">
-                        Paiement déclaré le {formatDate(payment.created_at)} — référence : <span className="font-mono">{payment.reference || "non fournie"}</span>
+                        Paiement déclaré le {formatDate(payment.created_at)} — cherchez dans Airtel Money la référence : <span className="font-mono font-bold">{payment.reference || "non fournie"}</span>
                         {payment.amount && payment.days ? ` — ${payment.amount.toLocaleString("fr-FR")} FCFA pour ${payment.days} jours` : ""}
                       </p>
                     )}

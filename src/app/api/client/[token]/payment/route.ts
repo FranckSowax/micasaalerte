@@ -1,5 +1,6 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { checkRateLimit } from "@/lib/request-limit";
+import { currentOrderReference } from "@/lib/payment-reference";
 import { findPlan, PLAN_IDS } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -13,8 +14,8 @@ const PER_LINK = 5; // déclarations par heure et par abonné
 const HOUR_MS = 60 * 60_000;
 
 const PaymentSchema = z.object({
-  reference: z.string().trim().min(4).max(60),
-  // Formule choisie : 1 jour, 7 jours ou 30 jours.
+  // Formule choisie : 1 jour, 7 jours ou 30 jours. La référence n'est pas saisie par l'abonné :
+  // c'est la référence de commande que l'application lui a donnée à entrer dans Airtel Money.
   plan: z.enum(PLAN_IDS).default("day"),
 });
 
@@ -30,10 +31,13 @@ export async function POST(request: Request, { params }: { params: { token: stri
 
   const parsed = PaymentSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Référence de paiement invalide (4 à 60 caractères)" }, { status: 400 });
+    return NextResponse.json({ error: "Formule invalide" }, { status: 400 });
   }
 
   const demandId = demand.id as string;
+  // Même référence que celle affichée à l'abonné : elle est recalculée, jamais reçue du navigateur.
+  const reference = await currentOrderReference(supabase, demandId);
+  if (!reference) return NextResponse.json({ error: "Paiement indisponible pour le moment." }, { status: 503 });
   const { data: pending } = await supabase
     .from("subscription_payments")
     .select("id")
@@ -48,14 +52,14 @@ export async function POST(request: Request, { params }: { params: { token: stri
   const { error } = pending
     ? await supabase
         .from("subscription_payments")
-        .update({ reference: parsed.data.reference, amount: plan.price, days: plan.days })
+        .update({ reference, amount: plan.price, days: plan.days })
         .eq("id", pending.id)
     : await supabase.from("subscription_payments").insert({
         demand_id: demandId,
         user_id: demand.user_id as string,
         amount: plan.price,
         days: plan.days,
-        reference: parsed.data.reference,
+        reference,
         status: "pending",
       });
 

@@ -161,7 +161,9 @@ publication.
 - **Abonnement** (`src/lib/subscription.ts`) : 24 h d'essai gratuit a la premiere inscription, puis
   trois formules : 1 jour a 1 000 FCFA (48 h pendant la promo de lancement, constante `LAUNCH_PROMO`),
   7 jours a 5 000 FCFA, 30 jours a 15 000 FCFA. A l'expiration, le client ne recoit plus d'annonces et un seul message WhatsApp
-  l'invite a renouveler. Dans son espace, il lit les consignes de paiement (`SUBSCRIPTION_PAYMENT_INFO`),
+  l'invite a renouveler. Dans son espace, il lit les etapes Airtel Money (menu *150#, code marchand, montant) et sa
+  reference de commande `MCA` + 6 chiffres (`src/lib/payment-reference.ts`), propre a chaque paiement
+  donc a chaque reabonnement, qu'il saisit dans Airtel Money,
   choisit sa formule, paie par Mobile Money et saisit la reference de la transaction. L'agent verifie
   puis valide dans Clients (« Valider le paiement », ou « Activer » avec la formule de son choix) : les jours s'ajoutent a ce qui reste et le
   client est prevenu sur WhatsApp. Aucun paiement en ligne automatique pour l'instant.
