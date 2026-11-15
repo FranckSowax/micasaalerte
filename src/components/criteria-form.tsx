@@ -197,13 +197,18 @@ function ChoiceCard({ selected, onClick, icon: Icon, label, role = "checkbox" }:
       role={role}
       aria-checked={selected}
       onClick={onClick}
-      className={`relative flex items-center gap-3 min-h-[60px] w-full rounded-2xl border-2 px-4 py-3 text-left text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      className={`relative flex items-center gap-2 min-h-[60px] w-full rounded-2xl border-2 px-2.5 py-3 text-left text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         selected ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-foreground hover:border-primary/50"
       }`}
     >
-      <Icon className={`h-6 w-6 shrink-0 ${selected ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
-      <span className="flex-1 leading-tight">{label}</span>
-      {selected && <Check className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />}
+      <Icon className={`h-5 w-5 shrink-0 ${selected ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true" />
+      <span className="flex-1 min-w-0 leading-tight">{label}</span>
+      {/* Coche en pastille sur le coin : elle signale la sélection sans prendre la place du libellé. */}
+      {selected && (
+        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-hidden="true">
+          <Check className="h-4 w-4" />
+        </span>
+      )}
     </button>
   );
 }

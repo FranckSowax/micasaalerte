@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Map, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
 import { formatDate, formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
+
+// Même police et même thème clair que l'inscription : l'abonné ne change pas d'univers.
+const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallback: false });
 
 type ClientStatus = "new" | "kept" | "removed";
 
@@ -257,7 +261,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
   if (state === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className={`theme-light ${font.className} min-h-screen flex items-center justify-center`}>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -265,7 +269,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
   if (state !== "ready" || !space) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className={`theme-light ${font.className} min-h-screen flex items-center justify-center px-4`}>
         <Card className="w-full max-w-md text-center">
           <CardContent className="p-8 space-y-4">
             <Home className="h-10 w-10 text-primary mx-auto" />
@@ -308,7 +312,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6">
+    <div className={`theme-light ${font.className} min-h-screen px-4 py-6`}>
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
           <Home className="h-7 w-7 text-primary shrink-0" />
@@ -391,7 +395,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
         })()}
 
         {notice && (
-          <div className={`p-3 rounded-md text-sm ${notice.ok ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"}`}>{notice.text}</div>
+          <div className={`p-3 rounded-md text-sm ${notice.ok ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>{notice.text}</div>
         )}
 
         {panel === "criteria" && (
