@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkCode, OTP_COOKIE, OTP_MAX_ATTEMPTS, OTP_TTL_MS, readChallenge } from "@/lib/login-otp";
-import { findAgentByPhone, otpSecret } from "@/lib/login-otp-server";
+import { countAgentsByPhone, createAgent, findAgentByPhone, otpSecret } from "@/lib/login-otp-server";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
@@ -43,7 +43,19 @@ export async function POST(request: Request) {
   }
   if (usedNonces.has(challenge.nonce)) return fail("Code déjà utilisé. Demandez un nouveau code.", 401, true);
 
-  const agent = await findAgentByPhone(check.challenge.phone);
+  let agent = await findAgentByPhone(check.challenge.phone);
+  let created = false;
+
+  // Inscription : le numéro est prouvé par le code. S'il a déjà un compte, on connecte simplement.
+  if (!agent && check.challenge.signupName) {
+    const existing = await countAgentsByPhone(check.challenge.phone);
+    if (existing === null) return fail("Inscription impossible pour le moment. Réessayez.", 500);
+    if (existing > 0) return fail("Ce numéro est lié à plusieurs comptes. Connectez-vous par email.", 409, true);
+    usedNonces.add(challenge.nonce);
+    agent = await createAgent(check.challenge.phone, check.challenge.signupName);
+    if (!agent) return fail("Création du compte impossible. Réessayez, ou inscrivez-vous par email.", 500, true);
+    created = true;
+  }
   if (!agent) return fail("Code incorrect.", 401);
 
   // WHY: Supabase n'ouvre pas de session « par numéro WhatsApp ». Le serveur fabrique un lien
@@ -67,5 +79,5 @@ export async function POST(request: Request) {
   usedNonces.add(challenge.nonce);
   if (usedNonces.size > 5000) usedNonces.clear();
   cookies().delete(OTP_COOKIE);
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, created });
 }

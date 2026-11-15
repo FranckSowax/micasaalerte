@@ -44,6 +44,19 @@ describe("code de connexion", () => {
     expect(checkCode(`${forged}.${cookie.split(".")[1]}`, "042917", SECRET, NOW)).toEqual({ ok: false, reason: "invalid" });
   });
 
+  it("porte le nom du nouvel inscrit, protégé par la signature", () => {
+    const { cookie, challenge } = sealChallenge("24177123456", "042917", SECRET, NOW, "Awa Ndong");
+    const check = checkCode(cookie, "042917", SECRET, NOW);
+    expect(check.ok && check.challenge.signupName).toBe("Awa Ndong");
+    expect(readChallenge(sealChallenge("24177123456", "042917", SECRET, NOW).cookie)?.signupName).toBeUndefined();
+
+    // Ajouter un nom à un défi de simple connexion invalide la signature : pas de compte créé par ce biais.
+    const login = sealChallenge("24177123456", "042917", SECRET, NOW);
+    const forged = Buffer.from(JSON.stringify({ ...login.challenge, signupName: "Intrus" })).toString("base64url");
+    expect(checkCode(`${forged}.${login.cookie.split(".")[1]}`, "042917", SECRET, NOW)).toEqual({ ok: false, reason: "invalid" });
+    expect(challenge.signupName).toBe("Awa Ndong");
+  });
+
   it("ne révèle pas le code dans le cookie", () => {
     const { cookie } = sealChallenge("24177123456", "042917", SECRET, NOW);
     expect(Buffer.from(cookie.split(".")[0], "base64url").toString("utf8")).not.toContain("042917");
