@@ -15,7 +15,7 @@ import {
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { applyLearning } from "@/lib/learning";
 import { loadLearnedProfile } from "@/lib/selection";
-import { isCopyablePhoto, isStoredPhoto } from "@/lib/photos";
+import { normalizeText } from "@/lib/extraction";
 import { sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import type { Annonce, ClientDemand } from "@/types/database";
@@ -81,7 +81,7 @@ async function handleCron(request: Request) {
         .select("*")
         .eq("demand_id", demand.id)
         .order("sent_at", { ascending: false })
-        .limit(15);
+        .limit(40);
       const ids = (sends || []).map((s) => s.annonce_id as string);
       const { data: rows } = ids.length ? await supabase.from("annonces").select("*").in("id", ids) : { data: [] };
       const byId = new Map(((rows || []) as unknown as Annonce[]).map((a) => [a.id, a]));
@@ -133,42 +133,31 @@ async function handleCron(request: Request) {
           secteur: typeof demand.geo_lat === "number" ? `${demand.geo_radius_km ?? "?"} km` : null,
           exigences: demand.exigences,
         },
-        sent: await Promise.all((sends || []).map(async (s) => {
+        // Envois récents, compacts : repère une même annonce (ou un même texte) reçue plusieurs fois.
+        sent: (sends || []).map((s) => {
           const annonce = byId.get(s.annonce_id as string);
-          if (!annonce) return { status: s.status, missing: true };
-          const m = matchDemand(annonce, demand);
-          // Photo : combien de liens, copie permanente ou lien du réseau d'origine, et répond-elle ?
-          const images = Array.isArray(annonce.raw_images) ? annonce.raw_images : [];
-          let photoHttp: number | string | null = null;
-          // On n'interroge que notre stockage ou les serveurs d'images autorisés, jamais une adresse quelconque.
-          if (images[0] && (isStoredPhoto(images[0]) || isCopyablePhoto(images[0]))) {
-            try {
-              photoHttp = (await fetch(images[0], { method: "HEAD", signal: AbortSignal.timeout(8000) })).status;
-            } catch {
-              photoHttp = "injoignable";
-            }
-          }
           return {
-            photos: images.length,
-            photoStored: images[0] ? isStoredPhoto(images[0]) : null,
-            photoHost: images[0] ? new URL(images[0]).hostname.split(".").slice(-2).join(".") : null,
-            photoHttp,
-            source: String(annonce.fb_post_id || "").startsWith("tiktok_") ? "tiktok" : "facebook",
-            status: s.status,
-            via: s.message_id === "review_dismissed" ? "écartée" : s.message_id ? "message" : "sans message",
-            sentAt: s.sent_at,
-            offre: annonce.type_offre,
-            bien: annonce.type_bien,
-            prix: annonce.prix,
-            ville: annonce.ville,
-            quartier: annonce.quartier,
-            chambres: annonce.nb_chambres,
-            score: m.score,
-            blockedBy: m.blockedBy,
-            uncertain: m.uncertain,
-            resume: (annonce.ai_summary || annonce.raw_text || "").slice(0, 140),
+            a: String(s.annonce_id).slice(0, 8),
+            v: s.annonce_version ?? 1,
+            at: String(s.sent_at || "").slice(5, 16),
+            st: `${s.status}/${s.client_status ?? "?"}`,
+            via: s.message_id === "review_dismissed" ? "écartée" : String(s.message_id || "").slice(0, 16),
+            post: annonce ? String(annonce.fb_post_id || "").slice(-10) : "absente",
+            cree: annonce ? String(annonce.created_at || "").slice(5, 16) : null,
+            doutes: annonce ? matchDemand(annonce, demand).decisiveDoubts : null,
+            texte: annonce ? normalizeText(annonce.raw_text || "").slice(0, 50) : null,
           };
-        })),
+        }),
+        // Annonces récentes du compte dont le texte est identique (republications non fusionnées).
+        textesRepetes: Object.entries(
+          recent.reduce<Record<string, string[]>>((acc, a) => {
+            const key = normalizeText(a.raw_text || "").slice(0, 80);
+            if (key) (acc[key] = acc[key] || []).push(`${a.id.slice(0, 8)}@${String(a.created_at).slice(5, 16)}`);
+            return acc;
+          }, {})
+        )
+          .filter(([, list]) => list.length > 1)
+          .map(([texte, list]) => ({ texte: texte.slice(0, 50), annonces: list })),
       });
     }
     return NextResponse.json({ explain: report });
