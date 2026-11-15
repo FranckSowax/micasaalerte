@@ -10,7 +10,7 @@ import {
   type Candidate,
   type Fingerprint,
 } from "./dedupe";
-import { shouldReadImages, withImageText } from "./ocr";
+import { IMAGE_TEXT_HEADING, shouldReadImages, withImageText } from "./ocr";
 import type { createServiceClient } from "./supabase/server";
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -473,4 +473,68 @@ export async function reprocessPending(
   }
 
   return counts;
+}
+
+export type RereadStatus = "enriched" | "reanalyzed" | "no_text" | "skipped" | "ai_error";
+
+/**
+ * Relecture ponctuelle des images d'une publication TikTok déjà traitée avant la lecture des images.
+ * Seules les publications restées incomplètes sont relues :
+ *  - écartées comme non immobilières (la légende ne contenait que des mots-dièse) → nouvelle analyse complète ;
+ *  - annonces créées sans prix ou sans quartier → annonce réanalysée avec le texte lu sur l'image.
+ * Les publications rattachées à une autre annonce (doublons) ne sont pas touchées.
+ * Les liens d'images doivent venir du flux du jour : ceux mémorisés ont souvent expiré.
+ *
+ * @example await rereadTiktokImages(client, input, dedupe) // "enriched"
+ */
+export async function rereadTiktokImages(client: ServiceClient, input: IngestInput, index?: DedupeIndex): Promise<RereadStatus> {
+  if (!shouldReadImages(input)) return "skipped";
+  const { data: seen } = await client
+    .from("raw_posts")
+    .select("id, ai_status")
+    .eq("user_id", input.userId)
+    .eq("fb_post_id", input.postId)
+    .maybeSingle();
+  if (!seen) return "skipped";
+
+  if (seen.ai_status === "not_real_estate") {
+    // Remise en attente : la collecte normale relit l'image puis analyse la publication.
+    await client.from("raw_posts").update({ ai_status: "pending", ai_error: null }).eq("id", seen.id);
+    const status = await ingestPost(client, input, index);
+    if (status === "ai_error") return "ai_error";
+    return status === "not_real_estate" ? "no_text" : "reanalyzed";
+  }
+
+  const { data: annonce } = await client
+    .from("annonces")
+    .select("id, raw_text, prix, quartier")
+    .eq("user_id", input.userId)
+    .eq("fb_post_id", input.postId)
+    .maybeSingle();
+  if (!annonce) return "skipped";
+  const rawText = typeof annonce.raw_text === "string" ? annonce.raw_text : "";
+  if (rawText.includes(IMAGE_TEXT_HEADING) || (annonce.prix && annonce.quartier)) return "skipped";
+
+  let imageText: string;
+  try {
+    imageText = await readImageText(input.images);
+  } catch (error) {
+    input.onAiError?.(`Lecture de l'image : ${error instanceof Error ? error.message.slice(0, 300) : "erreur"}`);
+    return "ai_error";
+  }
+  input.onImageText?.({ found: !!imageText });
+  if (!imageText) return "no_text";
+
+  const result = await reanalyzeAnnonce(client, {
+    annonceId: annonce.id as string,
+    userId: input.userId,
+    text: rawText || input.text,
+    legacyAiKey: input.legacyAiKey,
+    imageText,
+  });
+  if (!result.ok) {
+    input.onAiError?.(result.error);
+    return "ai_error";
+  }
+  return "enriched";
 }

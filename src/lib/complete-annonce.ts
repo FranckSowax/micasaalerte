@@ -47,7 +47,7 @@ export type ReanalyzeResult = { ok: true; isRealEstate: boolean } | { ok: false;
  */
 export async function reanalyzeAnnonce(
   client: Client,
-  params: { annonceId: string; userId: string; text: string; legacyAiKey?: string | null }
+  params: { annonceId: string; userId: string; text: string; legacyAiKey?: string | null; imageText?: string }
 ): Promise<ReanalyzeResult> {
   const caption = params.text.trim().slice(0, MAX_COMPLETED_TEXT);
   if (!caption) return { ok: false, error: "Texte vide" };
@@ -56,7 +56,7 @@ export async function reanalyzeAnnonce(
   if (!current) return { ok: false, error: "Annonce introuvable" };
 
   // Le texte lu sur l'image (TikTok) à la création de l'annonce reste dans l'analyse.
-  const text = withImageText(caption, imageTextOf(current.raw_text as string | null));
+  const text = withImageText(caption, params.imageText || imageTextOf(current.raw_text as string | null));
 
   let analysis;
   try {

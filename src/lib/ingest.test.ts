@@ -6,7 +6,7 @@ const analyze = vi.fn<(text: string) => Promise<AIExtractionResult>>();
 const readImages = vi.fn<(urls: string[]) => Promise<string>>();
 vi.mock("./ai", () => ({ analyzePost: (text: string) => analyze(text), readImageText: (urls: string[]) => readImages(urls) }));
 
-import { DedupeIndex, ingestPost, mergeExistingDuplicates, type IngestInput } from "./ingest";
+import { DedupeIndex, ingestPost, mergeExistingDuplicates, rereadTiktokImages, type IngestInput } from "./ingest";
 
 type Row = Record<string, unknown>;
 
@@ -287,6 +287,51 @@ describe("ingestPost : texte écrit sur les images TikTok", () => {
 
   it("ne lit pas les images des publications Facebook", async () => {
     await ingestPost(client, post({ images: ["https://scontent.xx.fbcdn.net/v/photo.jpg"] }), index);
+    expect(readImages).not.toHaveBeenCalled();
+  });
+});
+
+describe("relecture ponctuelle des images TikTok déjà vues", () => {
+  let tables: Record<string, Row[]>;
+  let client: never;
+  let index: DedupeIndex;
+  const COVER = "https://p16-sign-va.tiktokcdn.com/obj/cover.jpeg?x-expires=9";
+  const tiktok = (overrides: Partial<IngestInput> = {}) =>
+    post({ sourceType: "tiktok", sourceRowId: null, postId: "tiktok_5", author: "@jika.immo", text: "#immobilier #gabon", images: [COVER], ...overrides });
+
+  beforeEach(() => {
+    tables = { annonces: [], raw_posts: [] };
+    client = fakeClient(tables);
+    index = new DedupeIndex();
+    analyze.mockReset();
+    readImages.mockReset();
+  });
+
+  it("réanalyse une vidéo écartée faute de texte quand son image porte l'annonce", async () => {
+    tables.raw_posts.push({ id: "r1", user_id: "u1", fb_post_id: "tiktok_5", ai_status: "not_real_estate", raw_text: "#immobilier #gabon" });
+    readImages.mockResolvedValue("APPARTEMENT 2 CHAMBRES ANGONDJÉ 250 000 F");
+    analyze.mockResolvedValue(sheet());
+    expect(await rereadTiktokImages(client, tiktok(), index)).toBe("reanalyzed");
+    expect(tables.annonces).toHaveLength(1);
+    expect(tables.raw_posts[0]).toMatchObject({ ai_status: "real_estate" });
+  });
+
+  it("complète une annonce créée sans prix avec le texte lu sur l'image", async () => {
+    tables.raw_posts.push({ id: "r1", user_id: "u1", fb_post_id: "tiktok_5", ai_status: "real_estate", annonce_id: "a1" });
+    tables.annonces.push({ id: "a1", user_id: "u1", fb_post_id: "tiktok_5", raw_text: "Appartement à louer #gabon", prix: null, quartier: "Okala", details: {} });
+    readImages.mockResolvedValue("250 000 F / MOIS");
+    analyze.mockResolvedValue(sheet({ quartier: "Okala" }));
+    expect(await rereadTiktokImages(client, tiktok(), index)).toBe("enriched");
+    expect(analyze.mock.calls[0][0]).toBe("Appartement à louer #gabon\n\nTexte écrit sur l'image :\n250 000 F / MOIS");
+    expect(tables.annonces[0].prix).toBe(250000);
+  });
+
+  it("laisse les annonces complètes, déjà relues ou rattachées à une autre", async () => {
+    tables.raw_posts.push({ id: "r1", user_id: "u1", fb_post_id: "tiktok_5", ai_status: "real_estate" });
+    tables.annonces.push({ id: "a1", user_id: "u1", fb_post_id: "tiktok_5", raw_text: "Studio", prix: 150000, quartier: "Okala" });
+    tables.raw_posts.push({ id: "r2", user_id: "u1", fb_post_id: "tiktok_6", ai_status: "duplicate" });
+    expect(await rereadTiktokImages(client, tiktok(), index)).toBe("skipped");
+    expect(await rereadTiktokImages(client, tiktok({ postId: "tiktok_6" }), index)).toBe("skipped");
     expect(readImages).not.toHaveBeenCalled();
   });
 });

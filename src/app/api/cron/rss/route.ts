@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { isAIConfigured } from "@/lib/ai";
 import { isAuthorizedCron } from "@/lib/cron-auth";
-import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending } from "@/lib/ingest";
+import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending, rereadTiktokImages } from "@/lib/ingest";
 import { persistPhotos } from "@/lib/photos";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
@@ -40,6 +40,8 @@ async function handleCron(request: Request) {
   }
 
   const client = createServiceClient();
+  const reread = new URL(request.url).searchParams.get("reread") === "on";
+  const rereadStats: Record<string, number> = {};
 
   const { data: groupRows } = await client
     .from("facebook_groups")
@@ -166,7 +168,7 @@ async function handleCron(request: Request) {
           continue;
         }
 
-        const status = await ingestPost(client, {
+        const input: Parameters<typeof ingestPost>[1] = {
           userId: source.userId,
           sourceType: post.kind,
           sourceRowId: post.kind === "tiktok" ? null : source.id,
@@ -194,7 +196,15 @@ async function handleCron(request: Request) {
             const key = message.slice(0, 220);
             aiErrorMessages[key] = (aiErrorMessages[key] || 0) + 1;
           },
-        }, dedupe);
+        };
+        const status = await ingestPost(client, input, dedupe);
+
+        // Relecture ponctuelle (?reread=on) des images TikTok vues avant la lecture des images.
+        if (reread && status === "known" && post.kind === "tiktok") {
+          const result = await rereadTiktokImages(client, input, dedupe);
+          rereadStats[result] = (rereadStats[result] || 0) + 1;
+          if (result !== "skipped") analyses++;
+        }
 
         oldestChecked = true;
         if (status === "known") stats.known++;
@@ -254,5 +264,6 @@ async function handleCron(request: Request) {
 
   return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, shapes, unknownSources, aiErrorMessages,
     tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds },
+    ...(reread ? { reread: rereadStats } : {}),
   });
 }
