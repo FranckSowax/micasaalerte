@@ -19,6 +19,8 @@ import type { Annonce } from "@/types/database";
 
 const TYPE_OFFRE_OPTIONS = ["location", "vente", "colocation", "sous-location", "recherche"];
 const TYPE_BIEN_OPTIONS = ["appartement", "maison", "studio", "chambre", "terrain", "bureau", "villa"];
+/** Annonces chargées par page. */
+const PAGE_SIZE = 200;
 const STATUS_OPTIONS = ["new", "sent", "archived", "favorite"];
 const STATUS_LABELS: Record<string, string> = { new: "Nouveau", sent: "Envoyé", archived: "Archivé", favorite: "Favori" };
 
@@ -50,6 +52,8 @@ const SORT_ORDER: Record<SortKey, { column: string; ascending: boolean }> = {
 export default function AnnoncesPage() {
   const [annonces, setAnnonces] = useState<Annonce[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [view, setView] = useState<"cards" | "table">("cards");
   const [sort, setSort] = useState<SortKey>("published_desc");
   const [filters, setFilters] = useState({
@@ -73,49 +77,55 @@ export default function AnnoncesPage() {
     if (quartier) setFilters((f) => ({ ...f, quartier }));
   }, []);
 
+  // WHY: la page chargeait au plus 200 annonces et affichait ce nombre comme total. Le total
+  // vient maintenant de la base, et les annonces suivantes se chargent par pages.
+  const buildQuery = useCallback(
+    (offset: number) => {
+      let query = supabase
+        .from("annonces")
+        .select("*", { count: "exact" })
+        .eq("ai_is_real_estate", true)
+        .order(SORT_ORDER[sort].column, { ascending: SORT_ORDER[sort].ascending, nullsFirst: false })
+        // Départage stable : à valeur égale (ou absente), la plus récemment collectée d'abord.
+        .order("created_at", { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
+      if (filters.type_bien) query = query.eq("type_bien", filters.type_bien);
+      // Les annonces archivées (dont les doublons fusionnés) ne s'affichent que si on les demande.
+      if (filters.status) query = query.eq("status", filters.status);
+      else query = query.neq("status", "archived");
+      if (filters.prix_min) query = query.gte("prix", Number(filters.prix_min));
+      if (filters.prix_max) query = query.lte("prix", Number(filters.prix_max));
+      if (filters.quartier) query = query.ilike("quartier", `%${filters.quartier}%`);
+      if (filters.search) query = query.or(`raw_text.ilike.%${filters.search}%,ai_summary.ilike.%${filters.search}%`);
+      if (filters.date_from) query = query.gte("fb_posted_at", filters.date_from);
+      if (filters.date_to) query = query.lte("fb_posted_at", `${filters.date_to}T23:59:59`);
+      // Filtres photos et source appliqués par la base, pour que le total et les pages restent justes.
+      if (filters.has_images === "yes") query = query.not("raw_images", "is", null).neq("raw_images", "{}");
+      else if (filters.has_images === "no") query = query.or("raw_images.is.null,raw_images.eq.{}");
+      if (filters.source === "tiktok") query = query.like("fb_post_id", "tiktok_%");
+      else if (filters.source === "facebook") query = query.or("fb_post_id.is.null,fb_post_id.not.like.tiktok_%");
+      return query;
+    },
+    [filters, sort]
+  );
+
   const fetchAnnonces = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from("annonces")
-      .select("*")
-      .eq("ai_is_real_estate", true)
-      .order(SORT_ORDER[sort].column, { ascending: SORT_ORDER[sort].ascending, nullsFirst: false })
-      // Départage stable : à valeur égale (ou absente), la plus récemment collectée d'abord.
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (filters.type_offre) query = query.eq("type_offre", filters.type_offre);
-    if (filters.type_bien) query = query.eq("type_bien", filters.type_bien);
-    // Les annonces archivées (dont les doublons fusionnés) ne s'affichent que si on les demande.
-    if (filters.status) query = query.eq("status", filters.status);
-    else query = query.neq("status", "archived");
-    if (filters.prix_min) query = query.gte("prix", Number(filters.prix_min));
-    if (filters.prix_max) query = query.lte("prix", Number(filters.prix_max));
-    if (filters.quartier) query = query.ilike("quartier", `%${filters.quartier}%`);
-    if (filters.search) query = query.or(`raw_text.ilike.%${filters.search}%,ai_summary.ilike.%${filters.search}%`);
-    if (filters.date_from) query = query.gte("fb_posted_at", filters.date_from);
-    if (filters.date_to) query = query.lte("fb_posted_at", `${filters.date_to}T23:59:59`);
-
-    const { data } = await query;
-    let filtered = data || [];
-
-    // Client-side filter for images
-    if (filters.has_images === "yes") {
-      filtered = filtered.filter((a) => a.raw_images && a.raw_images.length > 0);
-    } else if (filters.has_images === "no") {
-      filtered = filtered.filter((a) => !a.raw_images || a.raw_images.length === 0);
-    }
-
-    // Client-side filter for source (TikTok vs Facebook)
-    if (filters.source === "tiktok") {
-      filtered = filtered.filter((a) => a.fb_post_id?.startsWith("tiktok_"));
-    } else if (filters.source === "facebook") {
-      filtered = filtered.filter((a) => !a.fb_post_id?.startsWith("tiktok_"));
-    }
-
-    setAnnonces(filtered);
+    const { data, count } = await buildQuery(0);
+    setAnnonces(data || []);
+    setTotal(count ?? (data || []).length);
     setLoading(false);
-  }, [filters, sort]);
+  }, [buildQuery]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    const { data, count } = await buildQuery(annonces.length);
+    setAnnonces((current) => [...current, ...(data || [])]);
+    if (count !== null) setTotal(count);
+    setLoadingMore(false);
+  };
 
   useEffect(() => {
     fetchAnnonces();
@@ -139,7 +149,8 @@ export default function AnnoncesPage() {
         <div>
           <h1 className="text-3xl font-bold">Annonces</h1>
           <p className="text-muted-foreground mt-1">
-            {annonces.length} annonce{annonces.length !== 1 ? "s" : ""} trouvée{annonces.length !== 1 ? "s" : ""}
+            {total} annonce{total !== 1 ? "s" : ""} trouvée{total !== 1 ? "s" : ""}
+            {annonces.length < total ? ` · ${annonces.length} affichées` : ""}
           </p>
         </div>
         <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
@@ -422,6 +433,15 @@ export default function AnnoncesPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {!loading && annonces.length < total && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Afficher les {Math.min(PAGE_SIZE, total - annonces.length)} suivantes ({total - annonces.length} restantes)
+          </Button>
         </div>
       )}
     </div>
