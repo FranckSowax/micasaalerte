@@ -35,3 +35,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Vidéos marketing (projets HyperFrames, rendus et audio lourds) : jamais déployées
+/marketing-video/
+/marketing-video-16x9/

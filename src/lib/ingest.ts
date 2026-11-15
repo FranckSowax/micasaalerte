@@ -1,4 +1,4 @@
-import { analyzePost } from "./ai";
+import { analyzePost, readImageText } from "./ai";
 import { annonceFieldsFromAnalysis, hasDetailsColumn } from "./annonce-fields";
 import { isRicherText, reanalyzeAnnonce } from "./complete-annonce";
 import { normalizePhone } from "./contacts";
@@ -10,6 +10,7 @@ import {
   type Candidate,
   type Fingerprint,
 } from "./dedupe";
+import { shouldReadImages, withImageText } from "./ocr";
 import type { createServiceClient } from "./supabase/server";
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -45,6 +46,8 @@ export interface IngestInput {
   onAiError?: (message: string) => void;
   /** Appelé quand la publication est rencontrée pour la toute première fois. */
   onFirstSeen?: () => void;
+  /** Appelé après la lecture des images (TikTok) : indique si du texte y a été trouvé. */
+  onImageText?: (info: { found: boolean }) => void;
   /** Appelé à la création d'une annonce : indique si elle a pu être placée sur la carte. */
   onNewAnnonce?: (info: { located: boolean }) => void;
 }
@@ -236,7 +239,29 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
     rawPostId = rawPost?.id as string | undefined;
   }
 
-  const fp: Fingerprint = fingerprint(input.text);
+  // TikTok : l'annonce est souvent écrite sur l'image, la légende se limitant à des mots-dièse.
+  // Le texte lu sur l'image s'ajoute à la légende AVANT la recherche de doublons : deux vidéos
+  // d'un même compte partagent souvent la même légende sans décrire le même bien.
+  let text = input.text.trim();
+  if (shouldReadImages(input)) {
+    try {
+      const imageText = await readImageText(input.images);
+      input.onImageText?.({ found: !!imageText });
+      text = withImageText(text, imageText);
+    } catch (error) {
+      const message = `Lecture de l'image : ${error instanceof Error ? error.message.slice(0, 300) : "erreur"}`;
+      input.onAiError?.(message);
+      if (rawPostId) await client.from("raw_posts").update({ ai_status: "error", ai_error: message }).eq("id", rawPostId);
+      return "ai_error";
+    }
+  }
+  if (!text) {
+    // Ni légende, ni texte lisible sur l'image : rien à analyser.
+    if (rawPostId) await client.from("raw_posts").update({ ai_status: "not_real_estate", ai_error: "Aucun texte lisible" }).eq("id", rawPostId);
+    return "not_real_estate";
+  }
+
+  const fp: Fingerprint = fingerprint(text);
   const candidates = index ? await index.get(client, input.userId) : [];
 
   // Étape 1 : texte quasi identique à une annonce récente → doublon, sans appel à l'IA.
@@ -248,7 +273,7 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
   }
 
   try {
-    const analysis = await analyzePost(input.text, input.legacyAiKey);
+    const analysis = await analyzePost(text, input.legacyAiKey);
 
     if (rawPostId) {
       await client
@@ -314,7 +339,8 @@ export async function ingestPost(client: ServiceClient, input: IngestInput, inde
         fb_author_name: input.author,
         fb_author_id: input.authorId || null,
         fb_posted_at: input.publishedAt,
-        raw_text: input.text,
+        // Légende complétée du texte lu sur l'image : c'est ce texte qui a été analysé.
+        raw_text: text,
         raw_images: input.images,
         ...fields,
       })
@@ -420,8 +446,11 @@ export async function reprocessPending(
           ? (row.agent_profile_id as string | null)
           : null;
     const text = typeof row.raw_text === "string" ? row.raw_text.trim() : "";
+    const images = Array.isArray(row.raw_images) ? (row.raw_images as string[]) : [];
+    // Un post TikTok sans légende reste analysable : son annonce est sur l'image.
+    if (!text && !(sourceType === "tiktok" && images.length)) continue;
     // Un post Facebook dont la source a été supprimée n'est plus rattachable : on le laisse.
-    if (!text || (sourceType !== "tiktok" && !sourceRowId)) continue;
+    if (sourceType !== "tiktok" && !sourceRowId) continue;
 
     const status = await ingestPost(
       client,
@@ -434,7 +463,7 @@ export async function reprocessPending(
         url: (row.fb_post_url as string | null) ?? null,
         author: (row.fb_author_name as string | null) ?? null,
         text,
-        images: Array.isArray(row.raw_images) ? (row.raw_images as string[]) : [],
+        images,
         publishedAt: (row.fb_posted_at as string | null) ?? null,
         onAiError,
       },

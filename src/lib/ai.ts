@@ -8,6 +8,7 @@ import {
   type AnnonceDetails,
   type Extraction,
 } from "./extraction";
+import { cleanImageText, imageAsDataUrl, pickImages } from "./ocr";
 
 // ============================================================
 // Fournisseur IA : OpenRouter (modèle z.ai GLM) si OPENROUTER_API_KEY est défini,
@@ -173,6 +174,45 @@ export async function analyzePost(text: string, apiKey?: string | null): Promise
     tags: toTags(e),
     details: toAnnonceDetails(e),
   };
+}
+
+// Modèle de lecture des images : z.ai GLM 5.3 Flash accepte les images, pour un coût minime.
+const OPENROUTER_DEFAULT_VISION_MODEL = "z-ai/glm-5.3-flash";
+
+const IMAGE_TEXT_PROMPT = `Ces images viennent d'une publication TikTok d'annonce immobilière au Gabon.
+Recopie fidèlement tout le texte écrit dessus (titres, prix, quartier, nombre de chambres, téléphones…),
+ligne par ligne, sans rien inventer, résumer ni traduire. Ignore les logos et filigranes de TikTok.
+S'il n'y a aucun texte lisible, réponds uniquement : RIEN`;
+
+/**
+ * Lit le texte écrit sur les images d'une publication (OCR par un modèle multimodal).
+ * Renvoie "" si rien n'est lisible, si aucune image n'a pu être téléchargée ou si OpenRouter
+ * n'est pas configuré (Kimi, le fournisseur de repli, ne lit pas les images).
+ *
+ * @example const lu = await readImageText([urlCouverture]); // "STUDIO MEUBLÉ\nOkala\n150 000 F"
+ */
+export async function readImageText(urls: string[]): Promise<string> {
+  if (!process.env.OPENROUTER_API_KEY) return "";
+  const images = (await Promise.all(pickImages(urls).map(imageAsDataUrl))).filter((u): u is string => !!u);
+  if (!images.length) return "";
+
+  const { client, reasoningBudget, extraBody } = getAIProvider();
+  const response = await client.chat.completions.create({
+    model: process.env.OPENROUTER_VISION_MODEL || OPENROUTER_DEFAULT_VISION_MODEL,
+    ...extraBody,
+    max_tokens: 700 + reasoningBudget,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: IMAGE_TEXT_PROMPT },
+          ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        ],
+      },
+    ],
+    temperature: 0,
+  });
+  return cleanImageText(response.choices[0]?.message?.content);
 }
 
 // Chatbot intent interpretation

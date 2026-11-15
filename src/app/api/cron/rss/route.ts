@@ -68,7 +68,7 @@ async function handleCron(request: Request) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
-  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, enriched: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, enriched: 0, imageText: 0, imageNoText: 0, aiErrors: 0, empty: 0, deferred: 0 };
   for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
     const handle = t.tiktok_handle.replace(/^@/, "").toLowerCase();
     addSource(`tiktok:${handle}`, { id: t.id, userId: t.user_id, name: `@${handle}`, aiKey: t.profiles?.kimi_api_key ?? null });
@@ -130,12 +130,15 @@ async function handleCron(request: Request) {
         unknownSources[label] = (unknownSources[label] || 0) + 1;
         continue;
       }
-      if (!post.text) {
+      // Un post TikTok sans légende reste analysable : son annonce est écrite sur l'image.
+      if (!post.text && !(post.kind === "tiktok" && post.images.length)) {
         stats.empty++;
         continue;
       }
 
-      const textKey = `${sourceKey}:${post.author}:${post.text}`;
+      // TikTok : la légende (mots-dièse) se répète d'une vidéo à l'autre sans décrire le même bien,
+      // chaque vidéo est donc traitée.
+      const textKey = post.kind === "tiktok" ? `${sourceKey}:${post.postId}` : `${sourceKey}:${post.author}:${post.text}`;
       const repeated = seenTexts.has(textKey);
       seenTexts.add(textKey);
 
@@ -169,6 +172,10 @@ async function handleCron(request: Request) {
           legacyAiKey: source.aiKey,
           onFirstSeen: () => {
             if (!oldestChecked) oldestWasNew = true;
+          },
+          onImageText: ({ found }) => {
+            if (found) stats.imageText++;
+            else stats.imageNoText++;
           },
           onNewAnnonce: ({ located }) => {
             if (located) stats.located++;

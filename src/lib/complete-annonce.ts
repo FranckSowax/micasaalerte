@@ -1,5 +1,6 @@
 import { analyzePost } from "./ai";
 import { annonceFieldsFromAnalysis } from "./annonce-fields";
+import { imageTextOf, withImageText } from "./ocr";
 import type { createServiceClient } from "./supabase/server";
 
 // Annonces dont le texte collecté est incomplet.
@@ -48,11 +49,14 @@ export async function reanalyzeAnnonce(
   client: Client,
   params: { annonceId: string; userId: string; text: string; legacyAiKey?: string | null }
 ): Promise<ReanalyzeResult> {
-  const text = params.text.trim().slice(0, MAX_COMPLETED_TEXT);
-  if (!text) return { ok: false, error: "Texte vide" };
+  const caption = params.text.trim().slice(0, MAX_COMPLETED_TEXT);
+  if (!caption) return { ok: false, error: "Texte vide" };
 
-  const { data: current } = await client.from("annonces").select("id, details").eq("id", params.annonceId).eq("user_id", params.userId).maybeSingle();
+  const { data: current } = await client.from("annonces").select("id, details, raw_text").eq("id", params.annonceId).eq("user_id", params.userId).maybeSingle();
   if (!current) return { ok: false, error: "Annonce introuvable" };
+
+  // Le texte lu sur l'image (TikTok) à la création de l'annonce reste dans l'analyse.
+  const text = withImageText(caption, imageTextOf(current.raw_text as string | null));
 
   let analysis;
   try {
@@ -70,6 +74,7 @@ export async function reanalyzeAnnonce(
   if (error) return { ok: false, error: "Enregistrement impossible" };
 
   // La publication mémorisée suit, pour que la collecte ne retraite pas le même texte.
-  await client.from("raw_posts").update({ raw_text: text }).eq("annonce_id", params.annonceId);
+  // La légende seule : c'est à elle que la collecte compare le texte du flux.
+  await client.from("raw_posts").update({ raw_text: caption }).eq("annonce_id", params.annonceId);
   return { ok: true, isRealEstate: analysis.is_real_estate };
 }

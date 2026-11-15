@@ -3,7 +3,8 @@ import type { AIExtractionResult } from "./ai";
 
 // L'IA est simulée : on compte ses appels et on choisit ce qu'elle « extrait ».
 const analyze = vi.fn<(text: string) => Promise<AIExtractionResult>>();
-vi.mock("./ai", () => ({ analyzePost: (text: string) => analyze(text) }));
+const readImages = vi.fn<(urls: string[]) => Promise<string>>();
+vi.mock("./ai", () => ({ analyzePost: (text: string) => analyze(text), readImageText: (urls: string[]) => readImages(urls) }));
 
 import { DedupeIndex, ingestPost, mergeExistingDuplicates, type IngestInput } from "./ingest";
 
@@ -101,6 +102,8 @@ describe("ingestPost avec anti-doublons", () => {
     index = new DedupeIndex();
     analyze.mockReset();
     analyze.mockResolvedValue(sheet());
+    readImages.mockReset();
+    readImages.mockResolvedValue("");
   });
 
   it("crée l'annonce à la première publication", async () => {
@@ -222,5 +225,68 @@ describe("mergeExistingDuplicates", () => {
     const tables = { annonces: [annonce("a", recent(60)), annonce("fav", recent(30), { status: "favorite" }), annonce("sent", recent(20), { status: "sent" })], raw_posts: [] };
     expect(await mergeExistingDuplicates(fakeClient(tables), new DedupeIndex(), "u1")).toBe(0);
     expect(tables.annonces.map((a) => a.status)).toEqual(["new", "favorite", "sent"]);
+  });
+});
+
+describe("ingestPost : texte écrit sur les images TikTok", () => {
+  let tables: Record<string, Row[]>;
+  let client: never;
+  let index: DedupeIndex;
+  const COVER = "https://p16-sign-va.tiktokcdn.com/obj/cover.jpeg?x-expires=1";
+  const tiktok = (overrides: Partial<IngestInput> = {}) =>
+    post({ sourceType: "tiktok", sourceRowId: null, postId: "tiktok_1", author: "@lewis_immo", text: "#immobilier #libreville", images: [COVER], ...overrides });
+
+  beforeEach(() => {
+    tables = { annonces: [], raw_posts: [] };
+    client = fakeClient(tables);
+    index = new DedupeIndex();
+    analyze.mockReset();
+    analyze.mockResolvedValue(sheet());
+    readImages.mockReset();
+  });
+
+  it("analyse la légende complétée du texte lu sur l'image", async () => {
+    readImages.mockResolvedValue("APPARTEMENT 2 CHAMBRES ANGONDJÉ\n250 000 F");
+    expect(await ingestPost(client, tiktok(), index)).toBe("new_annonce");
+    expect(readImages).toHaveBeenCalledWith([COVER]);
+    const analysed = analyze.mock.calls[0][0];
+    expect(analysed).toContain("#immobilier #libreville");
+    expect(analysed).toContain("Texte écrit sur l'image :\nAPPARTEMENT 2 CHAMBRES ANGONDJÉ");
+    expect(tables.annonces[0].raw_text).toBe(analysed);
+    // La publication mémorisée garde la légende du flux, à laquelle la collecte compare les suivantes.
+    expect(tables.raw_posts[0].raw_text).toBe("#immobilier #libreville");
+  });
+
+  it("ne fusionne pas deux vidéos du même compte à la même légende mais aux biens différents", async () => {
+    readImages.mockResolvedValueOnce("APPARTEMENT 2 CHAMBRES ANGONDJÉ\n250 000 F");
+    await ingestPost(client, tiktok(), index);
+    readImages.mockResolvedValueOnce("VILLA 5 CHAMBRES AKANDA\n1 500 000 F");
+    analyze.mockResolvedValueOnce(sheet({ type_bien: "villa", prix: 1500000, nb_chambres: 5, quartier: "Akanda", telephone: null, details: { hors_gabon: false, telephones: [] } as never }));
+    expect(await ingestPost(client, tiktok({ postId: "tiktok_2" }), index)).toBe("new_annonce");
+    expect(tables.annonces).toHaveLength(2);
+  });
+
+  it("analyse une vidéo sans légende quand l'image porte l'annonce", async () => {
+    readImages.mockResolvedValue("STUDIO MEUBLÉ OKALA 150 000 F");
+    expect(await ingestPost(client, tiktok({ text: "" }), index)).toBe("new_annonce");
+    expect(analyze.mock.calls[0][0]).toBe("Texte écrit sur l'image :\nSTUDIO MEUBLÉ OKALA 150 000 F");
+  });
+
+  it("écarte sans appel à l'IA une vidéo sans légende ni texte lisible", async () => {
+    readImages.mockResolvedValue("");
+    expect(await ingestPost(client, tiktok({ text: "" }), index)).toBe("not_real_estate");
+    expect(analyze).not.toHaveBeenCalled();
+  });
+
+  it("met la publication en erreur, pour la retenter, si la lecture de l'image échoue", async () => {
+    readImages.mockRejectedValue(new Error("503"));
+    expect(await ingestPost(client, tiktok(), index)).toBe("ai_error");
+    expect(tables.raw_posts[0]).toMatchObject({ ai_status: "error" });
+    expect(analyze).not.toHaveBeenCalled();
+  });
+
+  it("ne lit pas les images des publications Facebook", async () => {
+    await ingestPost(client, post({ images: ["https://scontent.xx.fbcdn.net/v/photo.jpg"] }), index);
+    expect(readImages).not.toHaveBeenCalled();
   });
 });
