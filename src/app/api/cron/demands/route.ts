@@ -84,7 +84,43 @@ async function handleCron(request: Request) {
       const ids = (sends || []).map((s) => s.annonce_id as string);
       const { data: rows } = ids.length ? await supabase.from("annonces").select("*").in("id", ids) : { data: [] };
       const byId = new Map(((rows || []) as unknown as Annonce[]).map((a) => [a.id, a]));
+
+      // Bilan sur les annonces récentes du compte : combien partiraient, combien sont retenues,
+      // et quel critère en écarte le plus (« aUnCritere » = écartées par ce seul critère).
+      const { data: recentRows } = await supabase
+        .from("annonces")
+        .select("*")
+        .eq("user_id", demand.user_id)
+        .eq("ai_is_real_estate", true)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false })
+        .limit(RECENT_ANNONCES);
+      const recent = (recentRows || []) as unknown as Annonce[];
+      const sentIds = new Set(ids);
+      const bilan = { annonces: recent.length, depuis: recent[recent.length - 1]?.created_at ?? null, dejaRecues: 0, aEnvoyer: 0, aVerifier: 0, scoreInsuffisant: 0 };
+      const ecartees: Record<string, number> = {};
+      const aUnCritere: Record<string, number> = {};
+      for (const annonce of recent) {
+        if (sentIds.has(annonce.id)) {
+          bilan.dejaRecues++;
+          continue;
+        }
+        const m = matchDemand(annonce, demand);
+        if (!m.eligible) {
+          for (const reason of m.blockedBy) ecartees[reason] = (ecartees[reason] || 0) + 1;
+          if (m.blockedBy.length === 1) aUnCritere[m.blockedBy[0]] = (aUnCritere[m.blockedBy[0]] || 0) + 1;
+        } else if (m.needsReview) bilan.aVerifier++;
+        else if (shouldSend(m, demand)) bilan.aEnvoyer++;
+        else bilan.scoreInsuffisant++;
+      }
+
       report.push({
+        numero: `…${String(demand.client_phone).slice(-4)}`,
+        acces: subscriptionState(demand, now).status,
+        modeAlerte: demand.alert_mode ?? null,
+        bilan,
+        ecartees,
+        aUnCritere,
         criteria: {
           offre: demand.filter_type_offre,
           bien: demand.filter_type_bien,
