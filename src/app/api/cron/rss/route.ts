@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { isAIConfigured } from "@/lib/ai";
+import { archiveExpired, isExpired } from "@/lib/annonce-lifetime";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending, rereadTiktokImages } from "@/lib/ingest";
 import { persistPhotos } from "@/lib/photos";
@@ -70,7 +71,7 @@ async function handleCron(request: Request) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
-  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, enriched: 0, imageText: 0, imageNoText: 0, aiErrors: 0, empty: 0, deferred: 0 };
+  const stats = { posts: 0, newAnnonces: 0, duplicates: 0, priceUpdates: 0, mergedExisting: 0, located: 0, unlocated: 0, notRealEstate: 0, outOfArea: 0, known: 0, enriched: 0, imageText: 0, imageNoText: 0, aiErrors: 0, empty: 0, tooOld: 0, expired: 0, deferred: 0 };
   // Diagnostic TikTok : comptes enregistrés, et vidéos présentes dans les flux par compte.
   const tiktokRegistered = new Set<string>();
   const tiktokInFeeds: Record<string, number> = {};
@@ -144,6 +145,11 @@ async function handleCron(request: Request) {
       // Un post TikTok sans légende reste analysable : son annonce est écrite sur l'image.
       if (!post.text && !(post.kind === "tiktok" && post.images.length)) {
         stats.empty++;
+        continue;
+      }
+      // Publication de plus de 60 heures (durée de vie d'une annonce) : ni analysée ni enregistrée.
+      if (isExpired({ fb_posted_at: post.publishedAt })) {
+        stats.tooOld++;
         continue;
       }
 
@@ -252,6 +258,13 @@ async function handleCron(request: Request) {
       .from("tiktok_accounts")
       .update({ last_scraped_at: new Date().toISOString() })
       .in("id", Array.from(touchedTiktok));
+  }
+
+  // Annonces de plus de 60 heures : archivées (les favoris sont laissés).
+  try {
+    stats.expired = await archiveExpired(client);
+  } catch (error) {
+    console.error("Expiry archive failed:", error instanceof Error ? error.message : error);
   }
 
   // Copie permanente des photos : les liens Facebook et TikTok expirent en quelques jours.

@@ -1,4 +1,5 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
+import { isExpired } from "@/lib/annonce-lifetime";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
 import { applyLearning } from "@/lib/learning";
@@ -80,6 +81,8 @@ export async function GET(request: Request, { params }: { params: { token: strin
     // n'est plus proposée. Si l'abonné l'avait déjà classée, il la garde avec la mention du retrait.
     const withdrawal = annonce.status === "archived" ? withdrawalOf(annonce.details as Record<string, unknown> | null) : null;
     if (clientStatus === "new" && annonce.status === "archived") continue;
+    // Annonce de plus de 60 heures pas encore classée par l'abonné : plus affichée.
+    if (clientStatus === "new" && isExpired(annonce as { fb_posted_at?: string | null; created_at?: string | null })) continue;
     const point = locateAnnonce(annonce as Parameters<typeof locateAnnonce>[0]);
     items.push({
       id: annonce.id,

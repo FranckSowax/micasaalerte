@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { isExpired } from "@/lib/annonce-lifetime";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
 import { needsExpiryNotice, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "@/lib/subscription";
@@ -96,7 +97,7 @@ async function handleCron(request: Request) {
         .neq("status", "archived")
         .order("created_at", { ascending: false })
         .limit(RECENT_ANNONCES);
-      const recent = (recentRows || []) as unknown as Annonce[];
+      const recent = ((recentRows || []) as unknown as Annonce[]).filter((a) => !isExpired(a, now));
       const sentIds = new Set(ids);
       const bilan = { annonces: recent.length, depuis: recent[recent.length - 1]?.created_at ?? null, dejaRecues: 0, aEnvoyer: 0, aVerifier: 0, scoreInsuffisant: 0 };
       const ecartees: Record<string, number> = {};
@@ -210,7 +211,8 @@ async function handleCron(request: Request) {
       .order("created_at", { ascending: false })
       .limit(RECENT_ANNONCES);
 
-    const annonces = (rows || []) as unknown as Annonce[];
+    // Annonces de plus de 60 heures : plus envoyées, même avant leur archivage par la collecte.
+    const annonces = ((rows || []) as unknown as Annonce[]).filter((a) => !isExpired(a, now));
 
     for (const demand of userDemands) {
       if (!ignoreQuiet && isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {

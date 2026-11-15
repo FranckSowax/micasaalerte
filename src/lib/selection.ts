@@ -1,4 +1,5 @@
 import type { createServiceClient } from "@/lib/supabase/server";
+import { isExpired } from "./annonce-lifetime";
 import { DEFAULT_MAX_ALERTS_PER_DAY, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "@/lib/matching";
 import { applyLearning, EMPTY_PROFILE, learnProfile, type LearnedProfile } from "@/lib/learning";
 import { annonceVersion } from "@/lib/review";
@@ -63,6 +64,8 @@ export async function pickForDemand(supabase: Client, demand: ClientDemand, now:
   const profile = await loadLearnedProfile(supabase, (sends || []) as Row[]);
   const candidates: { annonce: Annonce; score: number }[] = [];
   for (const annonce of (rows || []) as unknown as Annonce[]) {
+    // Annonce de plus de 60 heures : plus proposée.
+    if (isExpired(annonce, now)) continue;
     if (known.has(`${annonce.id}:${annonceVersion(annonce)}`)) continue;
     // Le score tient compte de ce que l'abonné a déjà approuvé ou écarté.
     const match = applyLearning(matchDemand(annonce, demand), annonce, profile);
