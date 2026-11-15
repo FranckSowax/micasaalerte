@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Mi Casa Gabon - Suivi intelligent d'annonces immobilières",
   description:
-    "Scraping automatique, analyse IA et alertes WhatsApp pour les annonces immobilières au Gabon.",
+    "Surveillance automatique des annonces Facebook et TikTok, analyse IA et alertes WhatsApp pour l'immobilier au Gabon.",
   icons: {
     icon: [
       { url: "/icon-64.png", sizes: "64x64", type: "image/png" },

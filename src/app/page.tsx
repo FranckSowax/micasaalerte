@@ -40,8 +40,8 @@ export default function LandingPage() {
             <span className="text-primary">annonce immobilière</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Mi Casa Gabon scrape automatiquement les groupes Facebook, analyse les annonces avec l&apos;IA
-            et vous les envoie sur WhatsApp en temps réel.
+            Mi Casa Gabon surveille automatiquement les annonces sur Facebook et TikTok, analyse les annonces
+            avec l&apos;IA et vous les envoie sur WhatsApp en temps réel.
           </p>
           <div className="flex items-center justify-center gap-4">
             <Link href="/signup">
