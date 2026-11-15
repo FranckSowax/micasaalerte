@@ -12,6 +12,7 @@ import {
   startOfLocalDayIso,
 } from "@/lib/matching";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { isCopyablePhoto, isStoredPhoto } from "@/lib/photos";
 import { sleep } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 import type { Annonce, ClientDemand } from "@/types/database";
@@ -95,11 +96,27 @@ async function handleCron(request: Request) {
           secteur: typeof demand.geo_lat === "number" ? `${demand.geo_radius_km ?? "?"} km` : null,
           exigences: demand.exigences,
         },
-        sent: (sends || []).map((s) => {
+        sent: await Promise.all((sends || []).map(async (s) => {
           const annonce = byId.get(s.annonce_id as string);
           if (!annonce) return { status: s.status, missing: true };
           const m = matchDemand(annonce, demand);
+          // Photo : combien de liens, copie permanente ou lien du réseau d'origine, et répond-elle ?
+          const images = Array.isArray(annonce.raw_images) ? annonce.raw_images : [];
+          let photoHttp: number | string | null = null;
+          // On n'interroge que notre stockage ou les serveurs d'images autorisés, jamais une adresse quelconque.
+          if (images[0] && (isStoredPhoto(images[0]) || isCopyablePhoto(images[0]))) {
+            try {
+              photoHttp = (await fetch(images[0], { method: "HEAD", signal: AbortSignal.timeout(8000) })).status;
+            } catch {
+              photoHttp = "injoignable";
+            }
+          }
           return {
+            photos: images.length,
+            photoStored: images[0] ? isStoredPhoto(images[0]) : null,
+            photoHost: images[0] ? new URL(images[0]).hostname.split(".").slice(-2).join(".") : null,
+            photoHttp,
+            source: String(annonce.fb_post_id || "").startsWith("tiktok_") ? "tiktok" : "facebook",
             status: s.status,
             via: s.message_id === "review_dismissed" ? "écartée" : s.message_id ? "message" : "sans message",
             sentAt: s.sent_at,
@@ -114,7 +131,7 @@ async function handleCron(request: Request) {
             uncertain: m.uncertain,
             resume: (annonce.ai_summary || annonce.raw_text || "").slice(0, 140),
           };
-        }),
+        })),
       });
     }
     return NextResponse.json({ explain: report });
