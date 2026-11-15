@@ -58,6 +58,8 @@ async function handleCron(request: Request) {
   const supabase = createServiceClient();
   const now = new Date();
   const dayStart = startOfLocalDayIso(now);
+  // Test manuel : `?quiet=off` ignore la plage silencieuse pour ce passage (toujours avec le secret du cron).
+  const ignoreQuiet = new URL(request.url).searchParams.get("quiet") === "off";
 
   const { data: demands } = await supabase.from("client_demands").select("*").eq("is_active", true);
 
@@ -99,7 +101,7 @@ async function handleCron(request: Request) {
     const annonces = (rows || []) as unknown as Annonce[];
 
     for (const demand of userDemands) {
-      if (isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {
+      if (!ignoreQuiet && isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {
         stats.skippedQuiet++;
         continue;
       }
