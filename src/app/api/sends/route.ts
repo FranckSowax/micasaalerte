@@ -22,6 +22,7 @@ const BLOCK_LABELS: Record<string, string> = {
   budget_max: "Prix au-dessus du budget",
   chambres: "Pas assez de chambres",
   ville: "Autre ville",
+  secteur: "Hors du secteur demandé",
   equipement: "Équipement indispensable absent",
 };
 

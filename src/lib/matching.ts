@@ -219,9 +219,20 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
       weightSum += WEIGHTS.quartier;
       earned += inside ? WEIGHTS.quartier : 0;
       reasons.push(`à ${nearest.km.toFixed(1)} km de ${nearest.lieu} (rayon ${prefs.radiusKm} km) : ${inside ? "oui" : "non"}`);
+      // Secteur obligatoire : une annonce située hors de la zone demandée est écartée.
+      if (!inside) blockedBy.push("secteur");
     } else {
-      const value = !quartier ? UNKNOWN : sameName ? 1 : 0;
-      add(WEIGHTS.quartier, value, "quartier préféré");
+      // Pas de distance calculable : on compare les noms.
+      if (!quartier) {
+        // L'annonce ne donne aucun quartier : on ne peut ni confirmer ni exclure le secteur.
+        // C'est un doute décisif, pas un refus.
+        add(WEIGHTS.quartier, UNKNOWN, "quartier demandé");
+        uncertain.push("secteur");
+      } else {
+        // Un quartier est nommé : il fait partie des quartiers demandés, ou l'annonce est écartée.
+        add(WEIGHTS.quartier, sameName ? 1 : 0, "quartier demandé");
+        if (!sameName) blockedBy.push("secteur");
+      }
     }
   }
   if (prefs.meuble !== null) add(WEIGHTS.meuble, boolScore(prefs.meuble, annonce.meuble), "meublé");
@@ -252,7 +263,10 @@ export function matchDemand(annonce: Annonce, demand: ClientDemand): MatchResult
   // Type ou nombre de chambres inconnus : l'annonce reste éligible, mais passe après les autres.
   score -= UNCERTAIN_PENALTY * uncertain.filter((u) => u === "type" || u === "chambres").length;
 
-  const decisive = uncertain.filter((u) => u === "prix" || u === "ville" || u === "transaction" || u === "contenu");
+  // Secteur, budget et type de bien sont obligatoires : quand l'annonce ne permet pas de les
+  // vérifier, elle n'est jamais envoyée comme une annonce sûre.
+  const DECISIVE = ["prix", "ville", "transaction", "contenu", "type", "secteur"];
+  const decisive = uncertain.filter((u) => DECISIVE.includes(u));
   const needsReview = decisive.length > 0;
 
   return {

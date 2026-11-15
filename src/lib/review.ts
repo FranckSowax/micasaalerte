@@ -16,6 +16,7 @@ const DOUBT_LABELS: Record<string, string> = {
   type: "Type de bien non précisé",
   chambres: "Nombre de chambres non précisé",
   contenu: "Annonce trop peu précise",
+  secteur: "Quartier non précisé",
 };
 
 /**

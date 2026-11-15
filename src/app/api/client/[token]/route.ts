@@ -1,11 +1,12 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { matchDemand } from "@/lib/matching";
+import { applyLearning } from "@/lib/learning";
+import { demandPreferences, matchDemand } from "@/lib/matching";
 import { MAX_PER_ANNONCE } from "@/lib/photos";
 import { activeReports, isReport, mainReason, shouldAutoWithdraw, withdrawalOf, withWithdrawal, type FeedbackRow } from "@/lib/reports";
 import { doubtLabels } from "@/lib/review";
-import { pickForDemand, recordSelection } from "@/lib/selection";
+import { loadLearnedProfile, pickForDemand, recordSelection } from "@/lib/selection";
 import type { Annonce, ClientDemand } from "@/types/database";
 import { currentOrderReference, paymentMerchant } from "@/lib/payment-reference";
 import { subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
@@ -57,6 +58,8 @@ export async function GET(request: Request, { params }: { params: { token: strin
   const { data: annonces } = ids.length ? await supabase.from("annonces").select("*").in("id", ids) : { data: [] as Row[] };
   const byId = new Map(((annonces || []) as Row[]).map((a) => [a.id as string, a]));
 
+  const minScore = demandPreferences(demand as unknown as ClientDemand).minScore;
+  const profile = await loadLearnedProfile(supabase, sendRows);
   const seen = new Set<string>();
   const items = [];
   for (const send of sendRows) {
@@ -64,11 +67,15 @@ export async function GET(request: Request, { params }: { params: { token: strin
     // Une annonce renvoyée après un changement de prix n'apparaît qu'une fois, à sa version la plus récente.
     if (!annonce || seen.has(annonce.id as string)) continue;
     seen.add(annonce.id as string);
-    const match = matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand);
+    // Même calcul que pour l'envoi : critères actuels, ajustés par ce que les avis ont appris.
+    const match = applyLearning(matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand), annonce as unknown as Annonce, profile);
     const clientStatus = (send.client_status as string) || "new";
     // Critères modifiés : une annonce encore « à trier » qui ne correspond plus n'est plus proposée.
     // Celles que l'abonné a retenues ou supprimées restent visibles : c'est son propre tri.
-    if (clientStatus === "new" && !match.eligible) continue;
+    // WHY: le secteur (localité, rayon) et les équipements ne sont pas des critères bloquants, ils
+    // pèsent sur le score. Une annonce hors de la nouvelle zone reste « éligible » mais tombe sous
+    // le seuil d'envoi : on la retire aussi, sinon changer de localité ne changerait rien à l'écran.
+    if (clientStatus === "new" && (!match.eligible || match.score < minScore)) continue;
     // Annonce retirée (signalée par des abonnés, validée par l'agent ou par le seuil) : elle
     // n'est plus proposée. Si l'abonné l'avait déjà classée, il la garde avec la mention du retrait.
     const withdrawal = annonce.status === "archived" ? withdrawalOf(annonce.details as Record<string, unknown> | null) : null;

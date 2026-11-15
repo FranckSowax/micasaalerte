@@ -161,9 +161,21 @@ describe("annonce incomplète", () => {
     expect(m.uncertain).toContain("ville");
   });
 
-  it("garde éligible mais pénalise un type ou un nombre de chambres inconnus", () => {
-    const m = matchDemand(annonce({ type_bien: null, nb_chambres: null }), demand());
-    expect(m).toMatchObject({ eligible: true, needsReview: false, score: 80 });
+  it("type de bien obligatoire : un type inconnu n'est jamais envoyé comme une annonce sûre", () => {
+    const d = demand();
+    const m = matchDemand(annonce({ type_bien: null, nb_chambres: null }), d);
+    expect(m).toMatchObject({ eligible: true, needsReview: true, score: 80 });
+    expect(m.decisiveDoubts).toEqual(["type"]);
+    expect(shouldSend(m, d)).toBe(false);
+    // Seul le type manque : l'abonné la reçoit dans « À vérifier ».
+    expect(shouldSendForCheck(m, d)).toBe(true);
+  });
+
+  it("nombre de chambres inconnu seul : simple pénalité, l'annonce part normalement", () => {
+    const d = demand({ filter_nb_chambres_min: 2 });
+    const m = matchDemand(annonce({ nb_chambres: null }), d);
+    expect(m).toMatchObject({ eligible: true, needsReview: false });
+    expect(shouldSend(m, d)).toBe(true);
   });
 });
 
@@ -173,7 +185,9 @@ describe("score des préférences", () => {
     expect(matchDemand(annonce(), d).score).toBe(100);
     const other = matchDemand(annonce({ quartier: "Owendo" }), d);
     expect(other.score).toBe(0);
-    expect(other.eligible).toBe(true); // le quartier est une préférence, pas un blocage
+    // Secteur obligatoire : un autre quartier écarte l'annonce.
+    expect(other.eligible).toBe(false);
+    expect(other.blockedBy).toContain("secteur");
     expect(shouldSend(other, d)).toBe(false);
   });
 
@@ -224,7 +238,9 @@ describe("matching par rayon", () => {
     // Nzeng Ayong est à 13,6 km d'Angondjé.
     const m = matchDemand(annonce({ quartier: "Nzeng-Ayong", ville: null }), cherche());
     expect(m.score).toBe(0);
-    expect(m.eligible).toBe(true); // la distance est une préférence, pas un blocage
+    // Secteur obligatoire : hors du rayon, l'annonce est écartée.
+    expect(m.eligible).toBe(false);
+    expect(m.blockedBy).toContain("secteur");
     expect(shouldSend(m, cherche())).toBe(false);
   });
 
@@ -248,7 +264,12 @@ describe("matching par rayon", () => {
 
   it("retombe sur la comparaison des noms quand l'annonce n'est pas localisable", () => {
     expect(matchDemand(annonce({ quartier: "cité inconnue", ville: null }), cherche()).score).toBe(0);
-    expect(matchDemand(annonce({ quartier: null, ville: null }), cherche()).score).toBe(50);
+    // Aucun quartier dans l'annonce : ni confirmé ni exclu, à vérifier par l'abonné.
+    const sansLieu = matchDemand(annonce({ quartier: null, ville: null }), cherche());
+    expect(sansLieu.score).toBe(50);
+    expect(sansLieu.eligible).toBe(true);
+    expect(sansLieu.decisiveDoubts).toEqual(["secteur"]);
+    expect(shouldSendForCheck(sansLieu, cherche())).toBe(true);
     // Quartier préféré absent du référentiel : comparaison par nom, comme avant.
     const d = cherche({ filter_quartiers: ["Cité Magnolia"] });
     expect(matchDemand(annonce({ quartier: "cité magnolia", ville: null }), d).score).toBe(100);
