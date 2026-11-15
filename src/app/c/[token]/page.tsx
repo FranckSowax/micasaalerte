@@ -5,7 +5,7 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
@@ -202,6 +202,9 @@ interface ClientSpace {
   annonces: ClientAnnonce[];
 }
 
+/** Clé de la mémoire locale où l'appareil garde la date de la dernière visite. */
+const LAST_VISIT_KEY = "mca-derniere-visite";
+
 /** Raisons proposées après « Pas pertinente ». */
 const REFUSAL_REASONS = [
   { id: "prix", label: "Le prix" },
@@ -290,6 +293,32 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Dernière visite, gardée sur l'appareil : ce qui est arrivé depuis porte le badge « Nouvelle
+  // annonce ». Lue une seule fois par ouverture de la page, pour que les badges restent affichés
+  // pendant toute la visite ; undefined tant qu'elle n'est pas lue.
+  const [lastVisit, setLastVisit] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (state !== "ready" || lastVisit !== undefined) return;
+    let previous: number | null = null;
+    try {
+      const stored = Number(localStorage.getItem(LAST_VISIT_KEY));
+      previous = Number.isFinite(stored) && stored > 0 ? stored : null;
+      localStorage.setItem(LAST_VISIT_KEY, String(Date.now()));
+    } catch {
+      // Mémoire locale indisponible (navigation privée) : tout ce qui est à trier compte comme nouveau.
+    }
+    setLastVisit(previous);
+  }, [state, lastVisit]);
+
+  /** Annonce encore à trier, arrivée depuis la dernière visite (ou première visite). */
+  const isNew = (a: ClientAnnonce) => {
+    if (a.status !== "new" || lastVisit === undefined) return false;
+    if (lastVisit === null) return true;
+    const sent = a.sentAt ? Date.parse(a.sentAt) : NaN;
+    return !Number.isNaN(sent) && sent > lastVisit;
+  };
+  const newCount = (space?.annonces || []).filter(isNew).length;
 
   const act = async (annonceId: string, action: "keep" | "remove" | "reset", feedback?: string) => {
     if (!space) return;
@@ -606,6 +635,13 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           ))}
         </div>
 
+        {newCount > 0 && (
+          <p className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" role="status">
+            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {newCount} nouvelle{newCount > 1 ? "s" : ""} annonce{newCount > 1 ? "s" : ""} depuis votre dernière visite.
+          </p>
+        )}
+
         {/* La carte n'est chargée que sur demande : la liste des annonces arrive tout de suite. */}
         <Button variant="outline" className="w-full min-h-[48px]" aria-expanded={showMap} onClick={() => setShowMap(!showMap)}>
           <MapPin className="h-4 w-4 mr-1" /> {showMap ? "Masquer la carte" : "Voir sur la carte"}
@@ -652,6 +688,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
                     </p>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
+                    {isNew(a) && <Badge className="bg-amber-400 text-black border-amber-500"><Sparkles className="h-3 w-3 mr-1" aria-hidden="true" />Nouvelle annonce</Badge>}
                     {a.typeOffre && <Badge>{getTypeOffreLabel(a.typeOffre)}</Badge>}
                     {a.typeBien && <Badge variant="outline">{getTypeBienLabel(a.typeBien)}</Badge>}
                     {a.meuble && <Badge variant="outline">Meublé</Badge>}
