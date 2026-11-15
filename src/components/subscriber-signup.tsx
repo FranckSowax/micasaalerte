@@ -14,7 +14,7 @@ import { planOffer, SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallback: false });
 
 type Step = 1 | 2 | 3 | "code" | "done";
-type Reply = { error?: string; code?: string; message?: string; spacePath?: string | null };
+type Reply = { error?: string; code?: string; message?: string; spacePath?: string | null; firstSelection?: number };
 
 const DEFAULT_PHONE = "+241";
 const STEP_TITLES = ["Votre recherche", "Budget et emplacement", "Votre alerte WhatsApp"];
@@ -34,6 +34,7 @@ export function SubscriberSignup({ userId }: { userId: string }) {
   const [phone, setPhone] = useState(DEFAULT_PHONE);
   const [code, setCode] = useState("");
   const [spacePath, setSpacePath] = useState<string | null>(null);
+  const [firstSelection, setFirstSelection] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -138,6 +139,7 @@ export function SubscriberSignup({ userId }: { userId: string }) {
       });
       if (ok) {
         setSpacePath(data.spacePath || null);
+        setFirstSelection(typeof data.firstSelection === "number" ? data.firstSelection : 0);
         setStep("done");
         try { sessionStorage.removeItem(storageKey); } catch { /* sans conséquence */ }
         window.scrollTo({ top: 0 });
@@ -199,7 +201,9 @@ export function SubscriberSignup({ userId }: { userId: string }) {
           <CheckCircle2 className="h-14 w-14 text-primary mx-auto" aria-hidden="true" />
           <h1 className="text-2xl font-extrabold">Votre alerte est créée</h1>
           <p className="text-base text-muted-foreground">
-            Les nouvelles annonces qui correspondent arriveront sur WhatsApp au {phone}.
+            {firstSelection > 0
+              ? `${firstSelection} annonce${firstSelection > 1 ? "s correspondent" : " correspond"} déjà à votre recherche : le lien vient de partir sur WhatsApp au ${phone}.`
+              : `Aucune annonce ne correspond pour l'instant. Dès la première, vous recevrez un message WhatsApp au ${phone}.`}{" "}
             Votre essai gratuit de {TRIAL_HOURS} h commence maintenant.
           </p>
         </div>

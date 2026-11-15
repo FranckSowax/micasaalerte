@@ -36,18 +36,29 @@ export function formatDigestMessage(annonces: Annonce[]): string {
  *
  * @example formatClientLinkMessage({ name: "Awa", count: 3, link })
  */
-export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean; resend?: boolean }): string {
+export function formatClientLinkMessage(params: { name?: string | null; count?: number; link: string; renewed?: boolean; resend?: boolean; welcome?: boolean }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
   const lines = ["*Mi Casa Alerte*", "", hello];
+  const n = params.count || 0;
   if (params.renewed) {
     lines.push("Voici votre nouveau lien personnel. L'ancien ne fonctionne plus.");
   } else if (params.resend) {
     lines.push("Voici le lien de votre espace personnel.");
+  } else if (params.welcome) {
+    // Message d'inscription : il part tout de suite, avec la première sélection s'il y en a une.
+    lines.push("Votre alerte est active.");
+    lines.push(
+      n > 1
+        ? `${n} annonces correspondent déjà à votre recherche.`
+        : n === 1
+          ? "Une annonce correspond déjà à votre recherche."
+          : "Aucune annonce ne correspond pour l'instant : vous serez prévenu dès la première."
+    );
   } else {
-    const n = params.count || 0;
     lines.push(n > 1 ? `${n} nouvelles annonces correspondent à votre recherche.` : "Une nouvelle annonce correspond à votre recherche.");
   }
-  lines.push("", "Consultez-les, contactez l'annonceur et triez-les ici :", params.link, "", "Ce lien est personnel : il ne fonctionne que sur votre appareil.");
+  const intro = params.welcome && n === 0 ? "Votre espace personnel :" : "Consultez-les, contactez l'annonceur et triez-les ici :";
+  lines.push("", intro, params.link, "", "Ce lien est personnel : il ne fonctionne que sur votre appareil.");
   return lines.join("\n");
 }
 

@@ -1,10 +1,11 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { DEFAULT_MAX_ALERTS_PER_DAY, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "@/lib/matching";
+import { matchDemand } from "@/lib/matching";
 import { MAX_PER_ANNONCE } from "@/lib/photos";
 import { activeReports, isReport, mainReason, shouldAutoWithdraw, withdrawalOf, withWithdrawal, type FeedbackRow } from "@/lib/reports";
-import { annonceVersion, doubtLabels } from "@/lib/review";
+import { doubtLabels } from "@/lib/review";
+import { pickForDemand, recordSelection } from "@/lib/selection";
 import type { Annonce, ClientDemand } from "@/types/database";
 import { paymentInfo, subscriptionState, SUBSCRIPTION_DAYS, SUBSCRIPTION_PLANS, SUBSCRIPTION_PRICE_FCFA, TRIAL_HOURS } from "@/lib/subscription";
 import type { createServiceClient } from "@/lib/supabase/server";
@@ -230,52 +231,9 @@ export async function PATCH(request: Request, { params }: { params: { token: str
     return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
 
-  const added = await refreshSelection(supabase, { ...demand, ...filters, ...zone } as unknown as ClientDemand);
+  // Nouvelle sélection tout de suite, sans message WhatsApp : l'abonné est déjà sur la page.
+  const updated = { ...demand, ...filters, ...zone } as unknown as ClientDemand;
+  const added = await recordSelection(supabase, updated, await pickForDemand(supabase, updated), "criteria_refresh");
   return withDeviceCookie(NextResponse.json({ success: true, added }), newDeviceId);
 }
 
-/**
- * Nouvelle sélection juste après un changement de critères : les annonces récentes qui correspondent
- * sont ajoutées à l'espace sans attendre le prochain passage horaire, et sans message WhatsApp
- * (l'abonné est déjà sur la page). Mêmes règles que le cron : pas de doublon, plafond quotidien.
- */
-async function refreshSelection(supabase: ReturnType<typeof createServiceClient>, demand: ClientDemand): Promise<number> {
-  const now = new Date();
-  if (subscriptionState(demand, now).status === "expired") return 0;
-
-  const [{ data: rows }, { data: sends }] = await Promise.all([
-    supabase
-      .from("annonces")
-      .select("*")
-      .eq("user_id", demand.user_id)
-      .eq("ai_is_real_estate", true)
-      .neq("status", "archived")
-      .order("created_at", { ascending: false })
-      .limit(MAX_ANNONCES),
-    supabase.from("client_demand_sends").select("*").eq("demand_id", demand.id),
-  ]);
-
-  const known = new Set(((sends || []) as Row[]).map((s) => `${s.annonce_id}:${s.annonce_version ?? 1}`));
-  const dayStart = startOfLocalDayIso(now);
-  const addedToday = ((sends || []) as Row[]).filter((s) => s.status !== "failed" && typeof s.sent_at === "string" && s.sent_at >= dayStart).length;
-  const cap = Math.max(demand.max_alerts_per_day ?? DEFAULT_MAX_ALERTS_PER_DAY, DEFAULT_MAX_ALERTS_PER_DAY);
-
-  const candidates: { annonce: Annonce; score: number }[] = [];
-  for (const annonce of (rows || []) as unknown as Annonce[]) {
-    if (known.has(`${annonce.id}:${annonceVersion(annonce)}`)) continue;
-    const match = matchDemand(annonce, demand);
-    if (shouldSend(match, demand) || shouldSendForCheck(match, demand)) candidates.push({ annonce, score: match.score });
-  }
-  candidates.sort((a, b) => b.score - a.score);
-
-  let added = 0;
-  for (const { annonce } of candidates.slice(0, Math.max(0, cap - addedToday))) {
-    const row = { demand_id: demand.id, annonce_id: annonce.id, message_id: "criteria_refresh", status: "sent" };
-    const version = annonceVersion(annonce);
-    let { error } = version === 1 ? await supabase.from("client_demand_sends").insert(row) : await supabase.from("client_demand_sends").insert({ ...row, annonce_version: version });
-    // Base sans la colonne annonce_version : on enregistre quand même.
-    if (error && version !== 1) ({ error } = await supabase.from("client_demand_sends").insert(row));
-    if (!error) added++;
-  }
-  return added;
-}

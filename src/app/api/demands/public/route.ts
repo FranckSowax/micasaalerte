@@ -1,9 +1,12 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
 import { BUDGET_ISSUE, budgetIsCoherent, CRITERIA_FIELD_MESSAGES, criteriaShape, criteriaToRow } from "@/lib/demand-schema";
-import { generateAccessToken } from "@/lib/client-access";
+import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { checkCode, normalizePhone, OTP_COOKIE, OTP_MAX_ATTEMPTS, OTP_TTL_MS, readChallenge } from "@/lib/login-otp";
 import { otpSecret } from "@/lib/login-otp-server";
+import { pickForDemand, recordSelection } from "@/lib/selection";
+import { formatClientLinkMessage, isWahaConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import type { ClientDemand } from "@/types/database";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -184,11 +187,37 @@ export async function POST(request: Request) {
   );
   if (convError) console.error("Chatbot conversation upsert failed:", convError.message);
 
+  // Première sélection tout de suite, annoncée par un message WhatsApp avec le lien de l'espace,
+  // quelle que soit l'heure : l'abonné vient de s'inscrire, la plage silencieuse ne s'applique pas.
+  // WHY: jamais bloquant — si la sélection ou l'envoi échoue, l'inscription reste acquise et le
+  // passage horaire prendra le relais.
+  let firstSelection = 0;
+  if (linkToken) {
+    try {
+      const { data: fresh } = await supabase.from("client_demands").select("*").eq("id", data.id).maybeSingle();
+      if (fresh) {
+        const demand = fresh as unknown as ClientDemand;
+        const picked = await pickForDemand(supabase, demand);
+        const sent = isWahaConfigured()
+          ? await sendWhatsAppMessage(
+              demand.client_phone,
+              formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(linkToken), welcome: true })
+            )
+          : { success: false as const, messageId: undefined };
+        if (!sent.success) console.error("Signup WhatsApp message failed");
+        firstSelection = await recordSelection(supabase, demand, picked, sent.success && sent.messageId ? sent.messageId : "signup");
+      }
+    } catch (err) {
+      console.error("First selection failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
   cookies().delete(OTP_COOKIE);
   return NextResponse.json({
     success: true,
     id: data.id,
     isNew: true,
+    firstSelection,
     // Chemin relatif : le navigateur du client reste sur le domaine où il a rempli le formulaire.
     spacePath: linkToken ? `/c/${linkToken}` : null,
   });
