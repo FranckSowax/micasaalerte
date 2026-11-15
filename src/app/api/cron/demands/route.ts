@@ -68,6 +68,58 @@ async function handleCron(request: Request) {
     return NextResponse.json({ message: "No active demands" });
   }
 
+  // Diagnostic : `?explain=on` n'envoie rien. Pour chaque client, il rend ses critères et, pour ses
+  // dernières annonces reçues, le résultat du matching recalculé. Ni nom ni numéro dans la réponse.
+  if (new URL(request.url).searchParams.get("explain") === "on") {
+    const report = [];
+    for (const d of demands) {
+      const demand = d as unknown as ClientDemand;
+      const { data: sends } = await supabase
+        .from("client_demand_sends")
+        .select("*")
+        .eq("demand_id", demand.id)
+        .order("sent_at", { ascending: false })
+        .limit(15);
+      const ids = (sends || []).map((s) => s.annonce_id as string);
+      const { data: rows } = ids.length ? await supabase.from("annonces").select("*").in("id", ids) : { data: [] };
+      const byId = new Map(((rows || []) as unknown as Annonce[]).map((a) => [a.id, a]));
+      report.push({
+        criteria: {
+          offre: demand.filter_type_offre,
+          bien: demand.filter_type_bien,
+          prixMin: demand.filter_prix_min,
+          prixMax: demand.filter_prix_max,
+          chambresMin: demand.filter_nb_chambres_min,
+          ville: demand.filter_ville,
+          quartiers: (demand.filter_quartiers || []).length,
+          secteur: typeof demand.geo_lat === "number" ? `${demand.geo_radius_km ?? "?"} km` : null,
+          exigences: demand.exigences,
+        },
+        sent: (sends || []).map((s) => {
+          const annonce = byId.get(s.annonce_id as string);
+          if (!annonce) return { status: s.status, missing: true };
+          const m = matchDemand(annonce, demand);
+          return {
+            status: s.status,
+            via: s.message_id === "review_dismissed" ? "écartée" : s.message_id ? "message" : "sans message",
+            sentAt: s.sent_at,
+            offre: annonce.type_offre,
+            bien: annonce.type_bien,
+            prix: annonce.prix,
+            ville: annonce.ville,
+            quartier: annonce.quartier,
+            chambres: annonce.nb_chambres,
+            score: m.score,
+            blockedBy: m.blockedBy,
+            uncertain: m.uncertain,
+            resume: (annonce.ai_summary || annonce.raw_text || "").slice(0, 140),
+          };
+        }),
+      });
+    }
+    return NextResponse.json({ explain: report });
+  }
+
   // Test manuel : `?resend=on` renvoie simplement son lien au client, sans nouvelle annonce.
   // WHY: réservé à une base à un seul client actif, pour ne jamais écrire à tous les abonnés.
   if (resendLink) {
