@@ -2,11 +2,13 @@ import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
 import { checkRateLimit } from "@/lib/request-limit";
 import { currentOrderReference } from "@/lib/payment-reference";
 import { findPlan, PLAN_IDS } from "@/lib/subscription";
+import { publicBaseUrl } from "@/lib/client-access";
+import { formatPaymentDeclaredMessage, isWahaConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-// Le client déclare avoir payé son abonnement (référence de la transaction Mobile Money).
-// Rien n'est activé ici : l'agent vérifie le paiement puis valide depuis l'écran Clients.
+// L'abonné déclare avoir payé avec sa référence de commande. Rien n'est activé ici : l'agent est
+// prévenu, vérifie l'encaissement dans Airtel Money puis valide depuis l'écran Paiements.
 
 export const dynamic = "force-dynamic";
 
@@ -67,5 +69,25 @@ export async function POST(request: Request, { params }: { params: { token: stri
     console.error("Payment declaration failed:", error.message);
     return NextResponse.json({ error: "Enregistrement impossible. Réessayez plus tard." }, { status: 500 });
   }
+
+  // Nouvelle déclaration : l'agent est prévenu sur son WhatsApp (numéro de ses Paramètres) pour
+  // vérifier l'encaissement. Une correction de formule sur une déclaration déjà signalée ne le relance pas.
+  // WHY: jamais bloquant — la déclaration est enregistrée et visible dans l'écran Paiements quoi qu'il arrive.
+  if (!pending && isWahaConfigured()) {
+    try {
+      const { data: agent } = await supabase.from("profiles").select("whatsapp_phone").eq("id", demand.user_id as string).maybeSingle();
+      const agentPhone = (agent?.whatsapp_phone as string | null) || null;
+      if (agentPhone) {
+        const client = `${(demand.client_name as string | null) || "Un abonné"} (${demand.client_phone as string})`;
+        await sendWhatsAppMessage(
+          agentPhone,
+          formatPaymentDeclaredMessage({ client, amount: plan.price, days: plan.days, reference, link: `${publicBaseUrl()}/paiements` })
+        );
+      }
+    } catch (err) {
+      console.error("Agent payment notice failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
   return withDeviceCookie(NextResponse.json({ success: true }), newDeviceId);
 }

@@ -21,10 +21,11 @@ import {
   Video,
   Map as MapIcon,
   ClipboardCheck,
+  Wallet,
   Send,
   Flag,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
@@ -37,6 +38,7 @@ const navItems = [
   { href: "/tiktok", label: "TikTok", icon: Video },
   { href: "/groupes/raw-posts", label: "Données brutes", icon: Database },
   { href: "/clients", label: "Clients", icon: Users2 },
+  { href: "/paiements", label: "Paiements", icon: Wallet },
   { href: "/verifications", label: "À vérifier", icon: ClipboardCheck },
   { href: "/envois", label: "Envois", icon: Send },
   { href: "/avis", label: "Avis clients", icon: Flag },
@@ -49,6 +51,24 @@ export function Sidebar() {
   const router = useRouter();
   const supabase = createClient();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Paiements déclarés en attente de vérification : affichés à côté de « Paiements ».
+  const [pendingPayments, setPendingPayments] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("subscription_payments")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .then(({ count }) => {
+        if (!cancelled) setPendingPayments(count ?? 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Recompté à chaque changement de page, par exemple après une validation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -80,7 +100,12 @@ export function Sidebar() {
               )}
             >
               <item.icon className="h-5 w-5" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.href === "/paiements" && pendingPayments > 0 && (
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-black" aria-label={`${pendingPayments} paiement${pendingPayments > 1 ? "s" : ""} à vérifier`}>
+                  {pendingPayments}
+                </span>
+              )}
             </Link>
           );
         })}

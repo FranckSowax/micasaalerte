@@ -1,12 +1,15 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { pickForDemand, recordSelection } from "@/lib/selection";
+import type { Annonce, ClientDemand } from "@/types/database";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { extendPaidUntil, findPlan, formatDeadline, PLAN_IDS } from "@/lib/subscription";
 import { formatSubscriptionActivatedMessage, sendWhatsAppMessage } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-// Validation d'un abonnement par l'agent, depuis l'écran Clients :
-// - activate : le paiement est reçu, le client gagne les jours de sa formule et en est prévenu sur WhatsApp ;
+// Validation d'un abonnement par l'agent, depuis les écrans Paiements et Clients :
+// - activate : le paiement est vérifié, l'abonnement démarre (jours de la formule) et l'abonné reçoit
+//   sur WhatsApp la confirmation avec sa première sélection d'annonces ;
 // - reject   : la déclaration de paiement en attente est écartée.
 
 const ActionSchema = z.object({
@@ -86,15 +89,32 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
   }
 
+  // Premier message de l'abonnement : les annonces récentes qui correspondent sont ajoutées tout de
+  // suite à l'espace et annoncées dans le message de validation, sans attendre le passage horaire.
+  // WHY: clé service pour l'écriture — l'agent n'a qu'un droit de lecture sur client_demand_sends
+  // (RLS). L'appartenance du client à l'agent a été vérifiée plus haut.
+  const service = createServiceClient();
+  const active = { ...demand, paid_until: paidUntil, expiry_notified_at: null, is_active: true, access_token: token } as unknown as ClientDemand;
+  let picked: Annonce[] = [];
+  try {
+    picked = await pickForDemand(service, active, now);
+  } catch (err) {
+    console.error("Activation selection failed:", err instanceof Error ? err.message : err);
+  }
+
   const sent = await sendWhatsAppMessage(
     demand.client_phone as string,
     formatSubscriptionActivatedMessage({
       name: demand.client_name as string | null,
       until: formatDeadline(paidUntil),
       link: clientLink(token),
+      count: picked.length,
     })
   );
   if (!sent.success) console.error("Activation WhatsApp send failed:", sent.error);
 
-  return NextResponse.json({ success: true, paidUntil, notified: sent.success });
+  // Enregistrées même si le message a échoué : l'abonné les trouve dans son espace.
+  const added = picked.length ? await recordSelection(service, active, picked, sent.success && sent.messageId ? sent.messageId : "activation") : 0;
+
+  return NextResponse.json({ success: true, paidUntil, notified: sent.success, added });
 }

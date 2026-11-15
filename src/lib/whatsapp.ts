@@ -87,16 +87,38 @@ export function formatAccessEndedMessage(params: { name?: string | null; trial: 
  *
  * @example formatSubscriptionActivatedMessage({ name: "Awa", until: "mardi 17 novembre à 13:00", link })
  */
-export function formatSubscriptionActivatedMessage(params: { name?: string | null; until: string; link: string }): string {
+export function formatSubscriptionActivatedMessage(params: { name?: string | null; until: string; link: string; count?: number }): string {
   const hello = params.name ? `Bonjour ${params.name},` : "Bonjour,";
+  const n = params.count || 0;
+  // Premier message de l'abonnement : il annonce aussi les annonces déjà ajoutées à l'espace.
+  const selection =
+    n > 1 ? `${n} annonces correspondent déjà à votre recherche.` : n === 1 ? "Une annonce correspond déjà à votre recherche." : null;
   return [
     "*Mi Casa Alerte*",
     "",
     hello,
     "Votre paiement est validé, merci.",
     `Vous recevez les annonces jusqu'au ${params.until}.`,
+    ...(selection ? [selection] : []),
     "",
-    "Votre espace :",
+    selection ? "Consultez-les ici :" : "Votre espace :",
+    params.link,
+  ].join("\n");
+}
+
+/**
+ * Message à l'agent : un abonné déclare avoir payé, le paiement est à vérifier dans Airtel Money.
+ *
+ * @example formatPaymentDeclaredMessage({ client: "Awa (24177…)", amount: 5000, days: 7, reference: "MCA123456", link })
+ */
+export function formatPaymentDeclaredMessage(params: { client: string; amount: number; days: number; reference: string; link: string }): string {
+  return [
+    "*Mi Casa Alerte — paiement à vérifier*",
+    "",
+    `${params.client} déclare avoir payé ${params.amount.toLocaleString("fr-FR")} FCFA (${params.days} jour${params.days > 1 ? "s" : ""}).`,
+    `Référence à retrouver dans Airtel Money : *${params.reference}*`,
+    "",
+    "Vérifiez puis validez ici :",
     params.link,
   ].join("\n");
 }

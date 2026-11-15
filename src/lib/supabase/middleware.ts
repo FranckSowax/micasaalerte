@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
     "/contributeurs",
     "/tiktok",
     "/clients",
+    "/paiements",
     "/verifications",
     "/envois",
     "/avis",

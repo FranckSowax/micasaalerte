@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { formatClientLinkMessage } from "./whatsapp";
+import { formatClientLinkMessage, formatPaymentDeclaredMessage, formatSubscriptionActivatedMessage } from "./whatsapp";
+
+describe("messages de paiement", () => {
+  it("prévient l'agent avec le montant, la durée et la référence à retrouver", () => {
+    const text = formatPaymentDeclaredMessage({ client: "Awa (24177000000)", amount: 5000, days: 7, reference: "MCA226047", link: "https://exemple.test/paiements" });
+    expect(text).toContain("Awa (24177000000) déclare avoir payé 5");
+    expect(text).toContain("(7 jours)");
+    expect(text).toContain("*MCA226047*");
+    expect(text).toContain("https://exemple.test/paiements");
+  });
+
+  it("à la validation, annonce la première sélection quand il y en a une", () => {
+    const avec = formatSubscriptionActivatedMessage({ name: "Awa", until: "mardi 17 novembre à 13:00", link: "https://exemple.test/c/abc", count: 3 });
+    expect(avec).toContain("Votre paiement est validé");
+    expect(avec).toContain("3 annonces correspondent déjà à votre recherche.");
+    expect(avec).toContain("Consultez-les ici :");
+
+    const sans = formatSubscriptionActivatedMessage({ until: "mardi 17 novembre à 13:00", link: "https://exemple.test/c/abc" });
+    expect(sans).not.toContain("correspond");
+    expect(sans).toContain("Votre espace :");
+  });
+});
 
 const link = "https://exemple.test/c/abc";
 
