@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
+import { ZONE_COLOR } from "@/lib/map-format";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
 import { formatDate, formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
 
@@ -440,11 +441,22 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
       lat: g.lat,
       lon: g.lon,
       count: g.items.length,
-      color: tab === "kept" ? "#22c55e" : tab === "removed" ? "#9ca3af" : "#f59e0b",
+      // Annonces écartées : marqueurs estompés ; sinon couleur de la transaction.
+      muted: tab === "removed",
       title: `${g.lieu} — ${g.items.length} annonce${g.items.length > 1 ? "s" : ""}`,
-      lines: g.items.slice(0, 5).map((a) => [getTypeBienLabel(a.typeBien), a.prix ? formatPrice(a.prix, a.devise || "FCFA") : null].filter(Boolean).join(" · ")),
+      items: g.items.map((a) => ({
+        id: a.id,
+        title: [getTypeBienLabel(a.typeBien), a.chambres ? `${a.chambres} ch.` : null, a.meuble ? "meublé" : null].filter(Boolean).join(" · "),
+        prix: a.prix,
+        devise: a.devise,
+        typeOffre: a.typeOffre,
+        photo: a.images?.[0] || a.image,
+        href: `#annonce-${a.id}`,
+        isNew: isNew(a),
+      })),
     }));
-  }, [visible, tab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, tab, lastVisit]);
 
   if (state === "loading") {
     return (
@@ -675,9 +687,9 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
             center={space.zones[0] ? [space.zones[0].lat, space.zones[0].lon] : DEFAULT_MAP_CENTER}
             zoom={DEFAULT_MAP_ZOOM}
             markers={markers}
-            circles={space.zones.map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: "#3b82f6", label: z.label }))}
+            circles={space.zones.map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: ZONE_COLOR, label: z.label }))}
             fitContent={markers.length > 0 || space.zones.length > 0}
-            className="h-64 w-full rounded-lg overflow-hidden"
+            className="h-80 w-full rounded-xl overflow-hidden shadow-sm ring-1 ring-black/5"
           />
         )}
 
@@ -696,7 +708,7 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
         ) : (
           <div className="space-y-4">
             {visible.map((a) => (
-              <Card key={a.id} className="overflow-hidden">
+              <Card key={a.id} id={`annonce-${a.id}`} className="overflow-hidden scroll-mt-4">
                 <PhotoGallery photos={a.images?.length ? a.images : a.image ? [a.image] : []} />
                 <CardContent className="p-4 space-y-3">
                   {a.withdrawn && (

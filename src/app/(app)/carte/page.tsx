@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { Map, type MapCircle, type MapMarker } from "@/components/map";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
-import { formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
+import { getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
+import { ZONE_COLOR } from "@/lib/map-format";
 import type { Annonce, ClientDemand } from "@/types/database";
 
 const TYPE_OFFRE = ["location", "vente", "colocation"];
@@ -63,17 +64,21 @@ export default function CartePage() {
       lon: g.lon,
       count: g.items.length,
       title: `${g.lieu} — ${g.items.length} annonce${g.items.length > 1 ? "s" : ""}`,
-      lines: g.items.slice(0, MAX_LINES).map((a) =>
-        [getTypeOffreLabel(a.type_offre), getTypeBienLabel(a.type_bien), a.prix ? formatPrice(a.prix, a.devise) : null]
-          .filter(Boolean)
-          .join(" · ")
-      ),
-      links: [
-        ...g.items.slice(0, MAX_LINES).map((a, i) => ({ label: `Ouvrir l'annonce ${i + 1}`, href: `/annonces/${a.id}` })),
-        ...(g.items.length > MAX_LINES
+      items: g.items.map((a) => ({
+        id: a.id,
+        title: [getTypeOffreLabel(a.type_offre), getTypeBienLabel(a.type_bien), a.nb_chambres ? `${a.nb_chambres} ch.` : null].filter(Boolean).join(" · "),
+        prix: a.prix,
+        devise: a.devise,
+        typeOffre: a.type_offre,
+        photo: a.raw_images?.[0] ?? null,
+        href: `/annonces/${a.id}`,
+        // Repère « nouveau » : collectée dans les dernières 24 heures.
+        isNew: !!a.created_at && Date.now() - new Date(a.created_at).getTime() < 86_400_000,
+      })),
+      links:
+        g.items.length > MAX_LINES
           ? [{ label: `Voir les ${g.items.length} annonces du quartier`, href: `/annonces?quartier=${encodeURIComponent(g.lieu)}` }]
-          : []),
-      ],
+          : [],
     }));
     const total = Object.values(groups).reduce((n, g) => n + g.items.length, 0);
     return { markers: list, located: total, unlocated: unlocatedCount, coarse: coarseCount };
@@ -86,12 +91,12 @@ export default function CartePage() {
       const radiusKm = d.geo_radius_km && d.geo_radius_km > 0 ? Number(d.geo_radius_km) : DEFAULT_RADIUS_KM;
       const label = `${d.client_name || "Client"} — rayon ${radiusKm} km`;
       if (typeof d.geo_lat === "number" && typeof d.geo_lon === "number") {
-        list.push({ id: d.id, lat: d.geo_lat, lon: d.geo_lon, radiusKm, color: "#3b82f6", label });
+        list.push({ id: d.id, lat: d.geo_lat, lon: d.geo_lon, radiusKm, color: ZONE_COLOR, label });
         continue;
       }
       (d.filter_quartiers || []).forEach((q, i) => {
         const p = locatePlace(q, ["quartier", "localite"]);
-        if (p) list.push({ id: `${d.id}-${i}`, lat: p.lat, lon: p.lon, radiusKm, color: "#3b82f6", label: `${label} (${p.lieu})` });
+        if (p) list.push({ id: `${d.id}-${i}`, lat: p.lat, lon: p.lon, radiusKm, color: ZONE_COLOR, label: `${label} (${p.lieu})` });
       });
     }
     return list;
