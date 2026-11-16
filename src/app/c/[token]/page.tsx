@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState, use } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { ClientOnboarding, onboardingSeen } from "@/components/client-onboarding";
 import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
 import { ZONE_COLOR } from "@/lib/map-format";
@@ -314,6 +315,34 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     setLastVisit(previous);
   }, [state, lastVisit]);
 
+  // Découverte de l'espace à la première visite sur ce téléphone, puis sur demande (« Aide »).
+  const [showTour, setShowTour] = useState(false);
+  useEffect(() => {
+    if (state === "ready" && !onboardingSeen()) setShowTour(true);
+  }, [state]);
+
+  // Rappels montrés une seule fois sur ce téléphone, au bon moment.
+  const [hint, setHint] = useState<string | null>(null);
+  const hintOnce = useCallback((key: string, text: string) => {
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch {
+      return;
+    }
+    setHint(text);
+  }, []);
+  useEffect(() => {
+    if (!hint) return;
+    const timer = setTimeout(() => setHint(null), 8000);
+    return () => clearTimeout(timer);
+  }, [hint]);
+  useEffect(() => {
+    if (state === "ready" && tab === "check") {
+      hintOnce("mca-astuce-verifier", "📞 Ici, il manque une information, souvent le prix. Appelez l'annonceur pour la confirmer avant de vous déplacer.");
+    }
+  }, [state, tab, hintOnce]);
+
   /** Annonce encore à trier, arrivée depuis la dernière visite (ou première visite). */
   const isNew = (a: ClientAnnonce) => {
     if (a.status !== "new" || lastVisit === undefined) return false;
@@ -332,6 +361,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     setBusy(annonceId);
     setReasonFor(null);
     const next: ClientStatus = action === "keep" ? "kept" : action === "remove" ? "removed" : "new";
+    if (action === "remove") hintOnce("mca-astuce-ecart", "Merci 🙏🏾 ! Vos prochaines annonces tiendront compte de votre avis.");
     const previous = space;
     // Mise à jour immédiate à l'écran, annulée si l'enregistrement échoue.
     setSpace({ ...space, annonces: space.annonces.map((a) => (a.id === annonceId ? { ...a, status: next, feedback: action === "reset" ? null : feedback ?? null } : a)) });
@@ -521,12 +551,16 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
   return (
     <div className={`theme-light ${font.className} min-h-screen px-4 py-6`}>
+      <ClientOnboarding open={showTour} onClose={() => setShowTour(false)} />
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
           <div className="flex-1 min-w-0">
             <BrandLogo variant="green" className="h-11 w-auto" priority />
             <p className="text-sm text-muted-foreground truncate">{space.clientName ? `Les annonces de ${space.clientName}` : "Vos annonces"}</p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => setShowTour(true)} aria-label="Aide : découvrir l'espace">
+            <HelpCircle className="h-4 w-4 sm:mr-1" /> <span className="hidden sm:inline">Aide</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={logout} disabled={leaving}>
             {leaving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />} Déconnexion
           </Button>
@@ -658,6 +692,15 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
             </Button>
           ))}
         </div>
+
+        {hint && (
+          <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary" role="status">
+            <p className="flex-1">{hint}</p>
+            <button type="button" onClick={() => setHint(null)} aria-label="Fermer le conseil" className="-m-1 p-1">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {newCount > 0 && (
           <div className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
