@@ -62,12 +62,28 @@ export interface SubscriptionFields {
   paid_until?: string | null;
   /** Dernier message « abonnement terminé » envoyé. */
   expiry_notified_at?: string | null;
+  /** Numéro WhatsApp de l'abonné : sert à reconnaître les accès illimités (UNLIMITED_PHONES). */
+  client_phone?: string | null;
 }
 
 export interface SubscriptionState {
   status: SubscriptionStatus;
   /** Fin de la période en cours, ou de la dernière période si l'accès est expiré. */
   endsAt: string | null;
+  /** Accès illimité (démonstration, équipe) : pas de date de fin. */
+  unlimited?: boolean;
+}
+
+const digits = (v: string | null | undefined) => (v || "").replace(/\D/g, "");
+
+/**
+ * Numéros à accès illimité (démonstration, équipe), lus dans la variable UNLIMITED_PHONES
+ * (séparés par des virgules ou des espaces). WHY: les numéros restent hors du code et du dépôt public.
+ *
+ * @example unlimitedPhones({ UNLIMITED_PHONES: "+241 06 87 13 09, +33 6 24 57 66 20" })
+ */
+export function unlimitedPhones(env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {}): Set<string> {
+  return new Set((env.UNLIMITED_PHONES || "").split(/[,;\n]+/).map(digits).filter((d) => d.length >= 8));
 }
 
 function toMs(value: string | null | undefined): number | null {
@@ -83,7 +99,9 @@ function toMs(value: string | null | undefined): number | null {
  *
  * @example subscriptionState(demand).status === "expired"
  */
-export function subscriptionState(demand: SubscriptionFields, now: Date = new Date()): SubscriptionState {
+export function subscriptionState(demand: SubscriptionFields, now: Date = new Date(), unlimited: Set<string> = unlimitedPhones()): SubscriptionState {
+  const phone = digits(demand.client_phone);
+  if (phone && unlimited.has(phone)) return { status: "active", endsAt: null, unlimited: true };
   if (demand.trial_ends_at === undefined && demand.paid_until === undefined) {
     return { status: "active", endsAt: null };
   }

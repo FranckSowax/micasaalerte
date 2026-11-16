@@ -146,6 +146,7 @@ export async function GET(request: Request, props: { params: Promise<{ token: st
       subscription: {
         status: state.status,
         endsAt: state.endsAt,
+        unlimited: state.unlimited === true,
         price: SUBSCRIPTION_PRICE_FCFA,
         days: SUBSCRIPTION_DAYS,
         plans: SUBSCRIPTION_PLANS,

@@ -157,6 +157,8 @@ interface ClientAnnonce {
 interface Subscription {
   status: "trial" | "active" | "expired";
   endsAt: string | null;
+  /** Accès illimité (démonstration, équipe) : ni compteur ni bouton d'abonnement. */
+  unlimited?: boolean;
   price: number;
   days: number;
   plans?: { id: string; label: string; price: number; days: number; note?: string }[];
@@ -577,11 +579,11 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
               <CardContent className="p-4 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className={sub.status === "expired" ? "bg-red-600 text-white" : sub.status === "trial" ? "bg-amber-500 text-black" : ""}>
-                    {sub.status === "trial" ? "Essai gratuit" : sub.status === "active" ? "Abonnement actif" : "Accès terminé"}
+                    {sub.unlimited ? "Accès illimité" : sub.status === "trial" ? "Essai gratuit" : sub.status === "active" ? "Abonnement actif" : "Accès terminé"}
                   </Badge>
                   <p className="text-sm">
                     {sub.status === "trial" && until && `Jusqu'au ${until}. Ensuite : ${price}.`}
-                    {sub.status === "active" && (until ? `Vous recevez les annonces jusqu'au ${until}.` : "Vous recevez les annonces.")}
+                    {sub.status === "active" && (sub.unlimited ? "Vous recevez les annonces, sans limite de durée." : until ? `Vous recevez les annonces jusqu'au ${until}.` : "Vous recevez les annonces.")}
                     {sub.status === "expired" && `Vous ne recevez plus de nouvelles annonces. Renouvelez : ${price}.`}
                   </p>
                 </div>
@@ -599,9 +601,11 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                 )}
 
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant={sub.status === "expired" ? "default" : "outline"} onClick={() => { setNotice(null); setPanel(panel === "payment" ? "none" : "payment"); }}>
-                    <Wallet className="h-4 w-4 mr-1" /> {sub.status === "active" ? "Prolonger" : "S'abonner"}
-                  </Button>
+                  {!sub.unlimited && (
+                    <Button size="sm" variant={sub.status === "expired" ? "default" : "outline"} onClick={() => { setNotice(null); setPanel(panel === "payment" ? "none" : "payment"); }}>
+                      <Wallet className="h-4 w-4 mr-1" /> {sub.status === "active" ? "Prolonger" : "S'abonner"}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={openCriteria}>
                     <SlidersHorizontal className="h-4 w-4 mr-1" /> Modifier mes critères
                   </Button>
