@@ -11,7 +11,17 @@ import {
   Zap,
   ArrowRight,
   CheckCircle2,
+  MapPinned,
+  SlidersHorizontal,
+  Smartphone,
 } from "lucide-react";
+
+const INCLUDED = [
+  { icon: MessageSquare, title: "Alertes WhatsApp en temps réel", desc: "Chaque nouvelle annonce qui vous correspond arrive sur votre WhatsApp, sans application à installer." },
+  { icon: Smartphone, title: "Annonces Facebook et TikTok", desc: "Groupes, pages d'agents et comptes TikTok sont surveillés en continu, même quand l'annonce est écrite sur la vidéo." },
+  { icon: SlidersHorizontal, title: "Critères : quartier, budget, type", desc: "Vous fixez votre budget, vos quartiers et le type de bien : seules les annonces qui collent vous sont envoyées." },
+  { icon: MapPinned, title: "Espace personnel et carte", desc: "Retrouvez vos annonces, triez-les et situez-les sur la carte, depuis votre téléphone." },
+];
 
 export default function LandingPage() {
   return (
@@ -153,13 +163,7 @@ export default function LandingPage() {
                     <p className="text-sm text-muted-foreground mb-4">
                       {plan.note ? plan.note : `soit ${new Intl.NumberFormat("fr-FR").format(perDay)} FCFA par jour`}
                     </p>
-                    <ul className="space-y-2 mb-6 flex-1">
-                      {["Alertes WhatsApp en temps réel", "Annonces Facebook et TikTok", "Critères : quartier, budget, type", "Espace personnel et carte"].map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" /> {f}
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="flex-1" />
                     <Link href="/signup">
                       <Button variant={highlighted ? "default" : "outline"} className="w-full">Commencer</Button>
                     </Link>
@@ -167,6 +171,22 @@ export default function LandingPage() {
                 </Card>
               );
             })}
+          </div>
+
+          {/* Inclus dans toutes les formules. */}
+          <h3 className="text-xl font-bold text-center mt-16 mb-8">Inclus dans toutes les formules</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {INCLUDED.map((f) => (
+              <Card key={f.title} className="border-border">
+                <CardContent className="p-6">
+                  <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                    <f.icon className="h-6 w-6 text-primary" aria-hidden="true" />
+                  </div>
+                  <h4 className="font-semibold mb-1">{f.title}</h4>
+                  <p className="text-sm text-muted-foreground">{f.desc}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
