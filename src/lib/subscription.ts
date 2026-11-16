@@ -80,7 +80,7 @@ const digits = (v: string | null | undefined) => (v || "").replace(/\D/g, "");
  * Numéros à accès illimité (démonstration, équipe), lus dans la variable UNLIMITED_PHONES
  * (séparés par des virgules ou des espaces). WHY: les numéros restent hors du code et du dépôt public.
  *
- * @example unlimitedPhones({ UNLIMITED_PHONES: "+241 06 87 13 09, +33 6 24 57 66 20" })
+ * @example unlimitedPhones({ UNLIMITED_PHONES: "+241 07 00 00 01, +33 6 00 00 00 02" })
  */
 export function unlimitedPhones(env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {}): Set<string> {
   return new Set((env.UNLIMITED_PHONES || "").split(/[,;\n]+/).map(digits).filter((d) => d.length >= 8));

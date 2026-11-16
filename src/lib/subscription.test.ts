@@ -88,17 +88,17 @@ describe("formules d'abonnement", () => {
 
 describe("accès illimités (UNLIMITED_PHONES)", () => {
   const NOW = new Date("2026-11-16T12:00:00Z");
-  const list = unlimitedPhones({ UNLIMITED_PHONES: "+241 06 87 13 09, +33 6 24 57 66 20" });
+  const list = unlimitedPhones({ UNLIMITED_PHONES: "+241 07 00 00 01, +33 6 00 00 00 02" });
 
   it("reconnaît les numéros listés, quel que soit le format", () => {
-    expect(list).toEqual(new Set(["24106871309", "33624576620"]));
+    expect(list).toEqual(new Set(["24107000001", "33600000002"]));
     expect(unlimitedPhones({})).toEqual(new Set());
   });
 
   it("donne un accès actif sans date de fin, même essai expiré", () => {
     const expired = { trial_ends_at: "2026-11-01T00:00:00Z", paid_until: null };
-    expect(subscriptionState({ ...expired, client_phone: "24106871309" }, NOW, list)).toEqual({ status: "active", endsAt: null, unlimited: true });
-    expect(subscriptionState({ ...expired, client_phone: "+33624576620" }, NOW, list).unlimited).toBe(true);
+    expect(subscriptionState({ ...expired, client_phone: "24107000001" }, NOW, list)).toEqual({ status: "active", endsAt: null, unlimited: true });
+    expect(subscriptionState({ ...expired, client_phone: "+33600000002" }, NOW, list).unlimited).toBe(true);
     expect(subscriptionState({ ...expired, client_phone: "24177000000" }, NOW, list).status).toBe("expired");
   });
 });
