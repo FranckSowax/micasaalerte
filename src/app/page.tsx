@@ -19,6 +19,12 @@ import {
   Smartphone,
 } from "lucide-react";
 
+const STEPS = [
+  { icon: SlidersHorizontal, title: "Vous fixez vos critères", desc: "Budget, quartiers ou rayon autour d'un point, type de bien, nombre de chambres : votre recherche en une minute." },
+  { icon: Search, title: "Nous surveillons pour vous", desc: "Groupes Facebook, pages d'agents et comptes TikTok sont lus en continu ; l'IA comprend chaque annonce, même écrite sur la vidéo." },
+  { icon: MessageSquare, title: "Les annonces arrivent sur WhatsApp", desc: "Dès qu'une annonce correspond, vous êtes prévenu sur WhatsApp et la retrouvez dans votre espace, avec photos et carte." },
+];
+
 const BENEFITS = [
   { icon: Brain, title: "Uniquement de vraies offres", desc: "L'IA écarte les recherches de logement, la publicité et les biens hors du Gabon : vous ne recevez que des annonces à louer ou à vendre." },
   { icon: Copy, title: "Zéro doublon", desc: "Une même annonce republiée dix fois, ou relayée par plusieurs agents, ne vous arrive qu'une seule fois." },
@@ -84,7 +90,8 @@ export default function LandingPage() {
             Comment ça marche ?
           </h2>
           {/* Vidéo de présentation (30 s, avec voix off). Rien n'est téléchargé avant la lecture. */}
-          <div className="max-w-4xl mx-auto mb-14 overflow-hidden rounded-2xl border border-border shadow-2xl bg-black">
+          <Reveal className="max-w-4xl mx-auto mb-14">
+          <div className="overflow-hidden rounded-2xl border border-border shadow-2xl bg-black">
             <video
               className="w-full aspect-video"
               src="/video/micasa-gabon-16x9.mp4"
@@ -95,31 +102,23 @@ export default function LandingPage() {
               aria-label="Présentation de Mi Casa Gabon en 30 secondes"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Search,
-                title: "Scraping automatique",
-                desc: "Surveillez les groupes Facebook immobiliers au Gabon. Les nouvelles annonces sont collectées automatiquement.",
-              },
-              {
-                icon: Brain,
-                title: "Analyse IA intelligente",
-                desc: "Claude IA extrait prix, quartier, type de bien, nombre de pièces et toutes les infos clés de chaque annonce.",
-              },
-              {
-                icon: MessageSquare,
-                title: "Alertes WhatsApp",
-                desc: "Recevez les annonces qui vous intéressent directement sur WhatsApp, filtrées selon vos critères.",
-              },
-            ].map((feature) => (
-              <Card key={feature.title} className="bg-card border-border">
-                <CardContent className="p-6 text-center">
-                  <feature.icon className="h-12 w-12 text-primary mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm">{feature.desc}</p>
-                </CardContent>
-              </Card>
+          </Reveal>
+          {/* Les 3 étapes, dans l'ordre de la vidéo, reliées par une ligne sur grand écran. */}
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="pointer-events-none absolute left-[16%] right-[16%] top-12 hidden h-px bg-gradient-to-r from-primary/0 via-primary/50 to-primary/0 md:block" aria-hidden="true" />
+            {STEPS.map((step, i) => (
+              <Reveal key={step.title} delay={i * 150} className="h-full">
+                <div className="group relative h-full rounded-2xl border border-border bg-card p-6 pt-8 text-center transition-all duration-300 hover:-translate-y-1 hover:border-primary/60 hover:shadow-[0_18px_40px_-18px_rgba(34,197,94,0.45)] motion-reduce:hover:translate-y-0">
+                  <div className="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/25 transition-transform duration-300 group-hover:scale-110 motion-reduce:group-hover:scale-100">
+                    <step.icon className="h-8 w-8 text-primary" aria-hidden="true" />
+                    <span className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-md">
+                      {i + 1}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{step.desc}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
