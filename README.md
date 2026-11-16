@@ -179,6 +179,19 @@ publication.
   version. Les doublons deja en base sont archives, jamais supprimes.
 - **RapidAPI** : la collecte manuelle est desactivee et ses boutons masques. Pour la reactiver, definir
   `NEXT_PUBLIC_RAPIDAPI_COLLECT=true` et redeployer.
+- **Verification des annonces douteuses (RapidAPI)** : le flux RSS ne garde qu'une photo et coupe certains
+  textes sans « … ». Une annonce douteuse (texte court, sans prix ni contact) peut etre relue par RapidAPI
+  (facebook-scraper3, `GET /post`, 1 appel) : texte complet reanalyse, album photo recupere, verdict qualite
+  (`src/lib/ad-quality.ts` : texte tronque, aucune photo, prix / quartier / contact manquants, note sur 100).
+  - Bouton « Verifier avec RapidAPI » sur la fiche de l'annonce ;
+  - verification automatique de l'annonce la plus douteuse par le cron de collecte, au plus
+    `RAPIDAPI_AUTO_PER_DAY` par jour (2 par defaut) ;
+  - controle d'un groupe entier : `POST /api/facebook-groups/check` `{ groupUrl, maxPages?, since? }`
+    (≈ 3 publications par appel, usage ponctuel).
+  Variables : `RAPIDAPI_KEY` (serveur uniquement), `RAPIDAPI_MONTHLY_CAP` (90 par defaut, sous les 100 du
+  forfait BASIC). Chaque appel est compte (`wa_settings`, cle `rapidapi_usage`) ; au plafond, les appels sont
+  refuses. Verdicts dans la table `fb_group_posts_checks` (section « VERIFICATION RAPIDAPI » de
+  `supabase_schema.sql`).
 
 - **Localisation** (`src/lib/geo.ts`) : chaque annonce est placee sur un referentiel de lieux du Gabon
   (`src/data/gabon-places.json` : 109 quartiers et 29 localites de la zone de Libreville, 53 villes),

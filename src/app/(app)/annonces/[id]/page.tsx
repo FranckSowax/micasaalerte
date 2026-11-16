@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { ISSUE_LABELS, type IssueCode } from "@/lib/ad-quality";
+import { isVerifiable } from "@/lib/annonce-verify";
+import { VerifyButton, type LastCheck } from "./verify-button";
 import { redirect, notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +51,25 @@ export default async function AnnonceDetailPage(
 
   if (!data) notFound();
   const annonce = data as unknown as Annonce;
+
+  // Dernier contrôle RapidAPI (table serveur, lue avec la clé service : l'annonce appartient à l'agent).
+  let lastCheck: LastCheck | null = null;
+  if (isVerifiable(annonce.fb_post_id)) {
+    const { data: check } = await createServiceClient()
+      .from("fb_group_posts_checks")
+      .select("status, score, issues, checked_at")
+      .eq("post_id", annonce.fb_post_id)
+      .maybeSingle();
+    if (check) {
+      const issues = (Array.isArray(check.issues) ? check.issues : []) as IssueCode[];
+      lastCheck = {
+        status: check.status as string,
+        score: Number(check.score) || 0,
+        labels: issues.map((code) => ISSUE_LABELS[code] ?? code),
+        checkedAt: check.checked_at as string,
+      };
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -153,6 +175,11 @@ export default async function AnnonceDetailPage(
               <div className="mt-4">
                 <CompleteText annonceId={annonce.id} truncated={looksTruncated(annonce.raw_text)} postUrl={annonce.fb_post_url} />
               </div>
+              {isVerifiable(annonce.fb_post_id) && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <VerifyButton annonceId={annonce.id} lastCheck={lastCheck} />
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

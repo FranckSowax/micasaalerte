@@ -675,3 +675,24 @@ CREATE TABLE IF NOT EXISTS public.playbook_log (
 );
 CREATE INDEX IF NOT EXISTS playbook_log_ritual_done_at ON public.playbook_log (ritual, done_at DESC);
 ALTER TABLE public.playbook_log ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- VERIFICATION RAPIDAPI : verdicts qualite des publications relues
+-- Ecrite uniquement par le serveur (cle service) : RLS activee, aucune politique.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.fb_group_posts_checks (
+  post_id    text PRIMARY KEY,                 -- identifiant Facebook de la publication
+  annonce_id uuid REFERENCES public.annonces(id) ON DELETE SET NULL,
+  group_id   text,                             -- identifiant Facebook du groupe
+  url        text,
+  status     text NOT NULL,                    -- OK | INCOMPLETE | REJECTED | NOT_AD | NOT_FOUND
+  score      integer NOT NULL DEFAULT 0,
+  issues     jsonb NOT NULL DEFAULT '[]'::jsonb,
+  extracted  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  raw        jsonb,
+  trigger    text,                             -- manual | auto | group
+  checked_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS fb_group_posts_checks_annonce ON public.fb_group_posts_checks (annonce_id);
+CREATE INDEX IF NOT EXISTS fb_group_posts_checks_group_checked ON public.fb_group_posts_checks (group_id, checked_at DESC);
+ALTER TABLE public.fb_group_posts_checks ENABLE ROW LEVEL SECURITY;

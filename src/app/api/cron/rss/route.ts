@@ -5,6 +5,7 @@ import { archiveExpired, isExpired } from "@/lib/annonce-lifetime";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { DedupeIndex, ingestPost, mergeExistingDuplicates, reprocessPending, rereadTiktokImages } from "@/lib/ingest";
 import { persistPhotos } from "@/lib/photos";
+import { autoVerify } from "@/lib/annonce-verify";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
 const MAX_PHOTOS_PER_RUN = 40;
@@ -272,6 +273,15 @@ async function handleCron(request: Request) {
     console.error("Expiry archive failed:", error instanceof Error ? error.message : error);
   }
 
+  // Relecture RapidAPI de l'annonce la plus douteuse, plafonnée par jour (RAPIDAPI_AUTO_PER_DAY).
+  // Avant la copie des photos, pour que l'album récupéré soit copié dans le même passage.
+  let verify: Record<string, unknown> = {};
+  try {
+    verify = await autoVerify(client, allowedAgents);
+  } catch (error) {
+    verify = { error: error instanceof Error ? error.message : "erreur" };
+  }
+
   // Copie permanente des photos : les liens Facebook et TikTok expirent en quelques jours.
   let photos = { stored: 0, dead: 0, failed: 0 };
   try {
@@ -280,7 +290,7 @@ async function handleCron(request: Request) {
     console.error("Photo copy failed:", error instanceof Error ? error.message : error);
   }
 
-  return NextResponse.json({ success: true, ...stats, reprocessed, photos, feeds, shapes, unknownSources, aiErrorMessages,
+  return NextResponse.json({ success: true, ...stats, reprocessed, photos, verify, feeds, shapes, unknownSources, aiErrorMessages,
     tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds },
     ...(reread ? { reread: rereadStats } : {}),
   });
