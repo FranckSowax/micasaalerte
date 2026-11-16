@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
+import { SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -117,43 +118,55 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing — formules lues dans lib/subscription : les prix affichés sont ceux facturés. */}
       <section className="py-20 px-4 bg-card/50">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">Tarifs</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-3">Tarifs</h2>
+          <p className="text-center text-muted-foreground mb-12">
+            Sans engagement : vous payez seulement la durée choisie, par Airtel Money.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="border-border">
-              <CardContent className="p-8">
-                <h3 className="text-xl font-bold mb-2">Free</h3>
-                <p className="text-3xl font-bold mb-4">0 FCFA<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
-                <ul className="space-y-2 mb-6">
-                  {["2 groupes Facebook", "50 annonces/mois", "1 canal WhatsApp", "Analyse IA basique"].map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-primary" /> {f}
-                    </li>
-                  ))}
-                </ul>
+              <CardContent className="p-6 flex flex-col h-full">
+                <h3 className="text-lg font-bold mb-1">Essai gratuit</h3>
+                <p className="text-3xl font-bold">0 FCFA</p>
+                <p className="text-sm text-muted-foreground mb-4">pendant {TRIAL_HOURS} heures</p>
+                <p className="text-sm text-muted-foreground mb-6 flex-1">Aucun paiement à l&apos;inscription : recevez vos premières annonces tout de suite.</p>
                 <Link href="/signup">
-                  <Button variant="outline" className="w-full">Commencer</Button>
+                  <Button variant="outline" className="w-full">Essayer</Button>
                 </Link>
               </CardContent>
             </Card>
-            <Card className="border-primary">
-              <CardContent className="p-8">
-                <h3 className="text-xl font-bold mb-2 text-primary">Pro</h3>
-                <p className="text-3xl font-bold mb-4">15 000 FCFA<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
-                <ul className="space-y-2 mb-6">
-                  {["Groupes illimités", "Annonces illimitées", "Canaux WhatsApp illimités", "Analyse IA avancée", "Collecte automatique", "Support prioritaire"].map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-primary" /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full">Commencer l&apos;essai</Button>
-                </Link>
-              </CardContent>
-            </Card>
+            {SUBSCRIPTION_PLANS.map((plan) => {
+              const highlighted = plan.id === "week";
+              const perDay = Math.round(plan.price / plan.days);
+              return (
+                <Card key={plan.id} className={highlighted ? "border-primary relative" : "border-border"}>
+                  {highlighted && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">
+                      Le plus choisi
+                    </span>
+                  )}
+                  <CardContent className="p-6 flex flex-col h-full">
+                    <h3 className={`text-lg font-bold mb-1 ${highlighted ? "text-primary" : ""}`}>{plan.label}</h3>
+                    <p className="text-3xl font-bold">{new Intl.NumberFormat("fr-FR").format(plan.price)} FCFA</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {plan.note ? plan.note : `soit ${new Intl.NumberFormat("fr-FR").format(perDay)} FCFA par jour`}
+                    </p>
+                    <ul className="space-y-2 mb-6 flex-1">
+                      {["Alertes WhatsApp en temps réel", "Annonces Facebook et TikTok", "Critères : quartier, budget, type", "Espace personnel et carte"].map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" /> {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <Link href="/signup">
+                      <Button variant={highlighted ? "default" : "outline"} className="w-full">Commencer</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>
