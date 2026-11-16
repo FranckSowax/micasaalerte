@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Clock, ExternalLink, Flag, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet } from "lucide-react";
+import { ExternalLink, Flag, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Découverte de l'espace client à la première visite : 5 cartes courtes qui montrent les vrais
@@ -11,12 +11,15 @@ import { Button } from "@/components/ui/button";
 export const ONBOARDING_KEY = "mca-decouverte-vue";
 
 /** Copie visuelle d'un bouton de l'espace client (non cliquable). */
-function Chip({ icon, children, tone = "outline" }: { icon?: ReactNode; children: ReactNode; tone?: "outline" | "primary" | "amber" | "red" }) {
+// Mêmes couleurs que dans l'espace client (voir app/c/[token]/page.tsx).
+function Chip({ icon, children, tone = "outline" }: { icon?: ReactNode; children: ReactNode; tone?: "outline" | "primary" | "amber" | "green" | "red" | "trial" }) {
   const styles = {
     outline: "border border-input bg-background text-foreground",
     primary: "bg-primary text-primary-foreground",
     amber: "bg-amber-400 text-black border border-amber-500",
-    red: "border border-red-300 bg-red-50 text-red-700",
+    green: "bg-green-600 text-white",
+    red: "bg-red-600 text-white",
+    trial: "bg-amber-500 text-black rounded-full px-3 py-1 text-xs",
   }[tone];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold ${styles}`} aria-hidden="true">
@@ -66,12 +69,12 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
     title: "Triez vos annonces",
     body: (
       <ul className="space-y-3">
-        <Line chip={<Chip icon={<ThumbsUp className={icon} />}>Pertinente</Chip>}>L&apos;annonce passe dans « Pertinentes ».</Line>
-        <Line chip={<Chip icon={<ThumbsDown className={icon} />}>Pas pertinente</Chip>}>
+        <Line chip={<Chip tone="green" icon={<ThumbsUp className={icon} />}>Pertinente</Chip>}>L&apos;annonce passe dans « Pertinentes ».</Line>
+        <Line chip={<Chip tone="red" icon={<ThumbsDown className={icon} />}>Pas pertinente</Chip>}>
           Dites pourquoi (le prix, le quartier, le type de bien…) : <b>la sélection apprend de vos réponses</b>.
         </Line>
         <Line chip={<Chip icon={<RotateCcw className={icon} />}>Restaurer</Chip>}>Vous changez d&apos;avis à tout moment.</Line>
-        <Line chip={<Chip tone="red" icon={<Flag className={icon} />}>Signaler une arnaque</Chip>}>Après 5 signalements, l&apos;annonce est retirée pour tous.</Line>
+        <Line chip={<Chip icon={<Flag className={icon} />}>Signaler une arnaque</Chip>}>Après 5 signalements, l&apos;annonce est retirée pour tous.</Line>
       </ul>
     ),
   },
@@ -96,7 +99,7 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
         <Line chip={<Chip icon={<SlidersHorizontal className={icon} />}>Modifier mes critères</Chip>}>
           Budget, quartiers ou rayon, type de bien : votre liste se met à jour tout de suite.
         </Line>
-        <Line chip={<Chip icon={<Clock className={icon} />}>Essai gratuit 24 h</Chip>}>Le compteur indique le temps restant.</Line>
+        <Line chip={<Chip tone="trial">Essai gratuit</Chip>}>24 h offertes : le compteur indique le temps restant.</Line>
         <Line chip={<Chip icon={<Wallet className={icon} />}>S&apos;abonner</Chip>}>
           1, 7 ou 30 jours par Airtel Money, avec la référence affichée. Paiement validé : confirmation sur WhatsApp.
         </Line>
