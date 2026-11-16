@@ -195,7 +195,7 @@ export async function POST(request: Request, { params }: { params: { token: stri
     console.error("Client action failed:", error.message);
     return NextResponse.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
-  // Deux abonnés différents signalent la même annonce : elle est retirée chez tous, sans attendre l'agent.
+  // Cinq abonnés différents (AUTO_WITHDRAW_AT) signalent la même annonce : elle est retirée chez tous, sans attendre l'agent.
   if (isReport(feedback)) await autoWithdraw(supabase, parsed.data.annonceId);
 
   return withDeviceCookie(NextResponse.json({ success: true, status: STATUS_BY_ACTION[parsed.data.action] }), newDeviceId);

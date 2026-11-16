@@ -13,9 +13,11 @@ describe("signalements d'une annonce", () => {
     expect(activeReports(rows, {})).toHaveLength(1);
   });
 
-  it("retire automatiquement à partir de deux abonnés différents", () => {
-    expect(shouldAutoWithdraw([row("d1", "arnaque")], {})).toBe(false);
-    expect(shouldAutoWithdraw([row("d1", "arnaque"), row("d2", "indisponible")], {})).toBe(true);
+  it("retire automatiquement à partir de cinq abonnés différents", () => {
+    const quatre = [row("d1", "arnaque"), row("d2", "indisponible"), row("d3", "arnaque"), row("d4", "arnaque")];
+    expect(shouldAutoWithdraw(quatre, {})).toBe(false);
+    expect(shouldAutoWithdraw([...quatre, row("d4", "arnaque")], {})).toBe(false); // même abonné deux fois
+    expect(shouldAutoWithdraw([...quatre, row("d5", "indisponible")], {})).toBe(true);
   });
 
   it("ne retire pas deux fois une annonce déjà retirée", () => {
@@ -27,7 +29,7 @@ describe("signalements d'une annonce", () => {
     const details = withReportsIgnored({ version: 2 }, NOW);
     const anciens = [row("d1", "arnaque"), row("d2", "arnaque")];
     expect(shouldAutoWithdraw(anciens, details)).toBe(false);
-    const nouveaux = [...anciens, row("d3", "arnaque", "2026-11-15T15:00:00Z"), row("d4", "arnaque", "2026-11-15T16:00:00Z")];
+    const nouveaux = [...anciens, ...["d3", "d4", "d5", "d6", "d7"].map((d, i) => row(d, "arnaque", `2026-11-15T1${5 + i}:00:00Z`))];
     expect(shouldAutoWithdraw(nouveaux, details)).toBe(true);
     expect(details.version).toBe(2);
   });

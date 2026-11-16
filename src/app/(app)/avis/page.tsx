@@ -159,7 +159,7 @@ export default function AvisPage() {
       <div>
         <h1 className="text-3xl font-bold">Avis clients</h1>
         <p className="text-muted-foreground mt-1">
-          Ce que vos abonnés disent des annonces reçues. Une annonce signalée par deux abonnés différents est retirée automatiquement ; vous pouvez aussi la retirer ou la garder vous-même.
+          Ce que vos abonnés disent des annonces reçues. Une annonce signalée par cinq abonnés différents est retirée automatiquement ; vous pouvez aussi la retirer ou la garder vous-même.
         </p>
       </div>
 

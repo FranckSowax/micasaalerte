@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import { analyzePost, isAIConfigured } from "@/lib/ai";
 import { annonceFieldsFromAnalysis } from "@/lib/annonce-fields";
 import { fetchWithRetry, sleep } from "@/lib/rate-limit";
@@ -22,10 +23,13 @@ async function handleCron(request: Request) {
   const serviceClient = createServiceClient();
 
   // Get all active groups with user profiles
-  const { data: groups } = await serviceClient
+  const { data: allGroups } = await serviceClient
     .from("facebook_groups")
     .select("*, profiles!inner(rapidapi_key, kimi_api_key)")
     .eq("is_active", true);
+  // SECURITY: seuls les groupes des agents autorisés sont collectés (voir lib/agent-access).
+  const allowedAgents = await fetchAllowedAgentIds();
+  const groups = (allGroups || []).filter((g) => allowedAgents?.has(g.user_id as string));
 
   if (!groups?.length) {
     return NextResponse.json({ message: "No active groups" });

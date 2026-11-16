@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
 import { BUDGET_ISSUE, budgetIsCoherent, CRITERIA_FIELD_MESSAGES, criteriaShape, criteriaToRow } from "@/lib/demand-schema";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
@@ -120,7 +121,8 @@ export async function POST(request: Request) {
     .eq("id", input.userId)
     .maybeSingle();
 
-  if (!admin) {
+  // SECURITY: inscription seulement auprès d'un agent autorisé (voir lib/agent-access).
+  if (!admin || !(await fetchAllowedAgentIds())?.has(input.userId)) {
     return NextResponse.json({ error: "Lien invalide" }, { status: 404 });
   }
 

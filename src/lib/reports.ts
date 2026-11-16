@@ -7,7 +7,8 @@ export const REPORT_REASONS = ["arnaque", "indisponible"] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
 /** Nombre d'abonnés différents à partir duquel l'annonce est retirée sans attendre l'agent. */
-export const AUTO_WITHDRAW_AT = 2;
+// WHY: 5 et non 2 — deux faux comptes suffisaient à faire retirer l'annonce d'un concurrent.
+export const AUTO_WITHDRAW_AT = 5;
 
 export const FEEDBACK_LABELS: Record<string, string> = {
   pertinente: "Pertinente",

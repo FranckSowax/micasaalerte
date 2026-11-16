@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import { isAIConfigured } from "@/lib/ai";
 import { archiveExpired, isExpired } from "@/lib/annonce-lifetime";
 import { isAuthorizedCron } from "@/lib/cron-auth";
@@ -64,10 +65,14 @@ async function handleCron(request: Request) {
   const sources = new Map<string, SourceRow[]>();
   const addSource = (key: string, row: SourceRow) => sources.set(key, [...(sources.get(key) || []), row]);
 
-  for (const g of (groupRows || []) as unknown as { id: string; user_id: string; group_id: string; group_name: string; profiles: OwnerProfile }[]) {
+  // SECURITY: seules les sources des agents autorisés sont collectées (voir lib/agent-access).
+  const allowedAgents = (await fetchAllowedAgentIds()) ?? new Set<string>();
+  const isAllowed = (row: { user_id: string }) => allowedAgents.has(row.user_id);
+
+  for (const g of ((groupRows || []) as unknown as { user_id: string }[]).filter(isAllowed) as unknown as { id: string; user_id: string; group_id: string; group_name: string; profiles: OwnerProfile }[]) {
     addSource(`group:${g.group_id}`, { id: g.id, userId: g.user_id, name: g.group_name, aiKey: g.profiles?.kimi_api_key ?? null });
   }
-  for (const a of (agentRows || []) as unknown as { id: string; user_id: string; profile_id: string; profile_name: string; profiles: OwnerProfile }[]) {
+  for (const a of ((agentRows || []) as unknown as { user_id: string }[]).filter(isAllowed) as unknown as { id: string; user_id: string; profile_id: string; profile_name: string; profiles: OwnerProfile }[]) {
     addSource(`profile:${a.profile_id.toLowerCase()}`, { id: a.id, userId: a.user_id, name: a.profile_name, aiKey: a.profiles?.kimi_api_key ?? null });
   }
 
@@ -75,7 +80,7 @@ async function handleCron(request: Request) {
   // Diagnostic TikTok : comptes enregistrés, et vidéos présentes dans les flux par compte.
   const tiktokRegistered = new Set<string>();
   const tiktokInFeeds: Record<string, number> = {};
-  for (const t of (tiktokRows || []) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
+  for (const t of ((tiktokRows || []) as unknown as { user_id: string }[]).filter(isAllowed) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
     const handle = tiktokHandle(t.tiktok_handle);
     if (!handle) continue;
     tiktokRegistered.add(handle);

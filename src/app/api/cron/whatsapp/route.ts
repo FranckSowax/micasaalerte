@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import {
   formatAnnonceMessage,
   sendWhatsAppMessage,
@@ -40,7 +41,9 @@ async function handleCron(request: Request) {
 
   // Group by user_id
   const byUser = new Map<string, typeof annonces>();
-  for (const a of annonces) {
+  // SECURITY: seuls les agents autorisés diffusent sur WhatsApp (voir lib/agent-access).
+  const allowedAgents = await fetchAllowedAgentIds();
+  for (const a of annonces.filter((x) => allowedAgents?.has(x.user_id))) {
     const list = byUser.get(a.user_id) || [];
     list.push(a);
     byUser.set(a.user_id, list);

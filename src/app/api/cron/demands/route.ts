@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import { isExpired } from "@/lib/annonce-lifetime";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
@@ -65,7 +66,10 @@ async function handleCron(request: Request) {
   const ignoreQuiet = new URL(request.url).searchParams.get("quiet") === "off";
   const resendLink = new URL(request.url).searchParams.get("resend") === "on";
 
-  const { data: demands } = await supabase.from("client_demands").select("*").eq("is_active", true);
+  const { data: allDemands } = await supabase.from("client_demands").select("*").eq("is_active", true);
+  // SECURITY: seuls les abonnés des agents autorisés reçoivent des alertes (voir lib/agent-access).
+  const allowedAgents = await fetchAllowedAgentIds();
+  const demands = (allDemands || []).filter((d) => allowedAgents?.has(d.user_id as string));
 
   if (!demands?.length) {
     return NextResponse.json({ message: "No active demands" });

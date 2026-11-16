@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { fetchAllowedAgentIds, isAgentApi } from "@/lib/agent-access";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -60,6 +61,21 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
+  }
+
+  // SECURITY: un compte Supabase ne suffit pas, il faut être un agent autorisé (voir lib/agent-access).
+  // En cas de doute (base injoignable), l'accès est refusé.
+  if (user && (isProtected || isAgentApi(pathname))) {
+    const allowed = await fetchAllowedAgentIds();
+    if (!allowed || !allowed.has(user.id)) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Accès réservé aux agents autorisés" }, { status: 403 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = "/acces-refuse";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   // /signup n'est pas concerné : c'est l'inscription des abonnés, ouverte à tous.

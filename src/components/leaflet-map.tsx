@@ -62,6 +62,8 @@ export interface LeafletMapProps {
   locate?: boolean;
   /** Bouton plein écran (par défaut affiché). */
   fullscreen?: boolean;
+  /** Message affiché sur la carte quand aucun marqueur n'est à montrer. */
+  emptyLabel?: string;
 }
 
 // Fond « plan » : style humanitaire d'OpenStreetMap (HOT, hébergé par OpenStreetMap France), plus doux
@@ -244,6 +246,11 @@ const STYLES = `
   box-shadow:0 2px 6px rgba(15,23,42,.35);border:2px solid #fff;cursor:pointer;transition:transform .15s}
 .mca-pill::after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:6px solid transparent;border-top-color:#fff;border-bottom:0}
 .mca-pill:hover{transform:translate(-50%,-100%) scale(1.08)}
+@keyframes mca-pop{0%{opacity:0;transform:translate(-50%,-100%) scale(.4)}70%{opacity:1;transform:translate(-50%,-100%) scale(1.08)}100%{transform:translate(-50%,-100%) scale(1)}}
+@keyframes mca-pop-c{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}70%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}100%{transform:translate(-50%,-50%) scale(1)}}
+.mca-pill{animation:mca-pop .45s cubic-bezier(.2,.9,.3,1.2) both}
+.mca-cluster{animation:mca-pop-c .45s cubic-bezier(.2,.9,.3,1.2) both}
+@media (prefers-reduced-motion:reduce){.mca-pill,.mca-cluster{animation:none}}
 .mca-pill .mca-n{background:#fff;color:var(--c);border-radius:999px;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;padding:0 4px}
 .mca-pill span{font-weight:600;opacity:.95}
 .mca-muted{background:#9ca3af!important}
@@ -285,6 +292,7 @@ export default function LeafletMap({
   className,
   locate = true,
   fullscreen = true,
+  emptyLabel,
 }: LeafletMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -292,6 +300,8 @@ export default function LeafletMap({
   const zonesLayer = useRef<L.LayerGroup | null>(null);
   const meLayer = useRef<L.LayerGroup | null>(null);
   const bases = useRef<{ plan: L.TileLayer; satellite: L.LayerGroup } | null>(null);
+  const fittedKey = useRef("");
+  const firstFitDone = useRef(false);
   const markersRef = useRef(markers);
   markersRef.current = markers;
   const pick = useRef(onPick);
@@ -404,10 +414,21 @@ export default function LeafletMap({
       const b = circle.getBounds();
       bounds.push(b.getNorthEast(), b.getSouthWest());
     }
-    for (const m of markers) bounds.push([m.lat, m.lon]);
-
-    if (fitContent && bounds.length) instance.fitBounds(L.latLngBounds(bounds).pad(0.15), { maxZoom: 15 });
     renderPlaces();
+
+    // Recadrage seulement quand le contenu change vraiment (autre onglet, nouvelles annonces) :
+    // un simple nouveau rendu de la page ne doit pas ramener la carte en arrière.
+    const key = `${markers.map((m) => m.id).join("|")}#${circles.map((c) => `${c.id}:${c.radiusKm}`).join("|")}`;
+    if (!fitContent || key === fittedKey.current) return;
+    fittedKey.current = key;
+    // Les annonces affichées priment : la carte se resserre sur elles ; sans annonce, sur les zones.
+    const target: L.LatLngExpression[] = markers.length ? markers.map((m) => [m.lat, m.lon] as [number, number]) : bounds;
+    if (!target.length) return;
+    const box = L.latLngBounds(target).pad(markers.length === 1 ? 0.6 : 0.25);
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !firstFitDone.current) instance.fitBounds(box, { maxZoom: 15 });
+    else instance.flyToBounds(box, { maxZoom: 15, duration: 0.7 });
+    firstFitDone.current = true;
   }, [markers, circles, fitContent, renderPlaces]);
 
   useEffect(() => {
@@ -509,6 +530,12 @@ export default function LeafletMap({
             </button>
           )}
         </div>
+
+        {emptyLabel && markers.length === 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-[1000] mx-auto w-fit max-w-[85%] -translate-y-1/2 rounded-lg bg-white/95 px-3 py-2 text-center text-xs font-medium text-slate-700 shadow-md ring-1 ring-black/10" role="status">
+            {emptyLabel}
+          </div>
+        )}
 
         {locateError && (
           <div className="absolute left-1/2 top-2 z-[1000] -translate-x-1/2 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-md" role="status">

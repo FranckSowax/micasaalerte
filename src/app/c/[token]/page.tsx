@@ -430,6 +430,13 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
 
   const visible = useMemo(() => (space?.annonces || []).filter((a) => tabOf(a) === tab), [space, tab]);
 
+  // Zones de recherche : mêmes objets d'un rendu à l'autre, pour ne pas recadrer la carte sans raison.
+  const zoneCircles = useMemo(
+    () => (space?.zones || []).map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: ZONE_COLOR, label: z.label })),
+    [space]
+  );
+  const mappedCount = useMemo(() => visible.filter((a) => a.geo).length, [visible]);
+
   const markers = useMemo<MapMarker[]>(() => {
     const groups: Record<string, { lat: number; lon: number; lieu: string; items: ClientAnnonce[] }> = {};
     for (const a of visible) {
@@ -683,12 +690,19 @@ export default function ClientSpacePage({ params }: { params: { token: string } 
           <MapPin className="h-4 w-4 mr-1" /> {showMap ? "Masquer la carte" : "Voir sur la carte"}
         </Button>
         {showMap && (
+          <p className="text-xs text-muted-foreground -mb-2" role="status" aria-live="polite">
+            Carte : {mappedCount} annonce{mappedCount > 1 ? "s" : ""} « {TABS.find((t) => t.key === tab)?.label} »
+            {visible.length > mappedCount ? ` · ${visible.length - mappedCount} sans lieu précis` : ""}
+          </p>
+        )}
+        {showMap && (
           <Map
             center={space.zones[0] ? [space.zones[0].lat, space.zones[0].lon] : DEFAULT_MAP_CENTER}
             zoom={DEFAULT_MAP_ZOOM}
             markers={markers}
-            circles={space.zones.map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: ZONE_COLOR, label: z.label }))}
+            circles={zoneCircles}
             fitContent={markers.length > 0 || space.zones.length > 0}
+            emptyLabel={`Aucune annonce à placer sur la carte dans « ${TABS.find((t) => t.key === tab)?.label ?? ""} »`}
             className="h-80 w-full rounded-xl overflow-hidden shadow-sm ring-1 ring-black/5"
           />
         )}

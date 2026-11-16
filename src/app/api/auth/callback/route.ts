@@ -4,7 +4,9 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  // SECURITY: seule une page du site est acceptée (« //autre.site » ou « @autre.site » renverraient ailleurs).
+  const requested = searchParams.get("next") ?? "/dashboard";
+  const next = /^\/(?![\/\\])[^@]*$/.test(requested) ? requested : "/dashboard";
 
   if (code) {
     const supabase = createClient();
