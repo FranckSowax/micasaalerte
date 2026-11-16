@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
+import { Reveal } from "@/components/reveal";
 import { SUBSCRIPTION_PLANS, TRIAL_HOURS } from "@/lib/subscription";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,14 +8,25 @@ import {
   Search,
   Brain,
   MessageSquare,
-  BarChart3,
-  Zap,
   ArrowRight,
-  CheckCircle2,
   MapPinned,
+  Copy,
+  Clock,
+  Sparkles,
+  Phone,
+  Image as ImageIcon,
   SlidersHorizontal,
   Smartphone,
 } from "lucide-react";
+
+const BENEFITS = [
+  { icon: Brain, title: "Uniquement de vraies offres", desc: "L'IA écarte les recherches de logement, la publicité et les biens hors du Gabon : vous ne recevez que des annonces à louer ou à vendre." },
+  { icon: Copy, title: "Zéro doublon", desc: "Une même annonce republiée dix fois, ou relayée par plusieurs agents, ne vous arrive qu'une seule fois." },
+  { icon: Clock, title: "Des annonces fraîches", desc: "Au-delà de 60 heures, une annonce est retirée : fini les biens déjà loués ou vendus." },
+  { icon: Sparkles, title: "Une sélection qui apprend", desc: "Dites si une annonce vous plaît ou non : les suivantes collent de mieux en mieux à vos goûts." },
+  { icon: ImageIcon, title: "Photos, prix et carte", desc: "Chaque annonce arrive avec ses photos, son prix, le nombre de chambres et sa position sur la carte." },
+  { icon: Phone, title: "Contact direct", desc: "Le numéro de l'annonceur est affiché : appelez ou écrivez-lui sur WhatsApp, sans intermédiaire." },
+];
 
 const INCLUDED = [
   { icon: MessageSquare, title: "Alertes WhatsApp en temps réel", desc: "Chaque nouvelle annonce qui vous correspond arrive sur votre WhatsApp, sans application à installer." },
@@ -113,28 +125,28 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* More features */}
-      <section className="py-20 px-4">
+      {/* Avantages pour l'abonné : apparition au défilement, relief au survol. */}
+      <section className="py-20 px-4 overflow-hidden">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">
-            Tout ce dont vous avez besoin
-          </h2>
+          <Reveal>
+            <h2 className="text-3xl font-bold text-center mb-3">Tout ce dont vous avez besoin</h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+              Moins de temps perdu, de meilleures annonces : Mi Casa Gabon fait le tri pour vous.
+            </p>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { icon: BarChart3, title: "Dashboard complet", desc: "Statistiques en temps réel sur vos annonces" },
-              { icon: Zap, title: "Filtres avancés", desc: "Triez par prix, quartier, type de bien et plus" },
-              { icon: Search, title: "Multi-groupes", desc: "Surveillez plusieurs groupes Facebook simultanément" },
-              { icon: Brain, title: "Détection intelligente", desc: "L'IA distingue les vraies annonces du bruit" },
-              { icon: MessageSquare, title: "Multi-canaux", desc: "Envoyez à différents contacts avec des filtres" },
-              { icon: CheckCircle2, title: "Favoris", desc: "Sauvegardez et organisez vos annonces préférées" },
-            ].map((feature) => (
-              <div key={feature.title} className="flex items-start gap-3 p-4">
-                <feature.icon className="h-6 w-6 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-medium mb-1">{feature.title}</h3>
-                  <p className="text-sm text-muted-foreground">{feature.desc}</p>
+            {BENEFITS.map((feature, i) => (
+              <Reveal key={feature.title} delay={i * 90} className="h-full">
+                <div className="group relative h-full overflow-hidden rounded-2xl border border-border bg-card/60 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/60 hover:shadow-[0_18px_40px_-18px_rgba(34,197,94,0.45)] motion-reduce:hover:translate-y-0">
+                  {/* Halo vert qui s'allume au survol. */}
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/20 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" aria-hidden="true" />
+                  <div className="relative mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/20 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-4deg] motion-reduce:group-hover:scale-100 motion-reduce:group-hover:rotate-0">
+                    <feature.icon className="h-6 w-6 text-primary" aria-hidden="true" />
+                  </div>
+                  <h3 className="relative font-semibold mb-1.5">{feature.title}</h3>
+                  <p className="relative text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
                 </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
