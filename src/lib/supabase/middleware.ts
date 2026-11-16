@@ -49,6 +49,7 @@ export async function updateSession(request: NextRequest) {
     "/envois",
     "/avis",
     "/whatsapp",
+    "/diffusion",
     "/settings",
   ];
   const { pathname } = request.nextUrl;

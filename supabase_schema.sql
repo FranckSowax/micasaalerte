@@ -654,3 +654,24 @@ ALTER TABLE subscription_payments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can CRUD own subscription payments" ON subscription_payments;
 CREATE POLICY "Users can CRUD own subscription payments" ON subscription_payments
     FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- ============================================================
+-- DIFFUSION (onglet Diffusion : campagnes WhatsApp / Facebook / Instagram)
+-- Tables lues et écrites uniquement par le serveur (clé service) : RLS activée, aucune politique.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.wa_settings (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.wa_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.playbook_log (
+  id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ritual  text NOT NULL,     -- 'diffusion:N'
+  note    text,              -- '🏠 Okala (2/5) · groupe 4 · statut 3'
+  done_by text,              -- 'cron' | 'admin'
+  done_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS playbook_log_ritual_done_at ON public.playbook_log (ritual, done_at DESC);
+ALTER TABLE public.playbook_log ENABLE ROW LEVEL SECURITY;

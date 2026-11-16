@@ -244,7 +244,7 @@ export async function wahaFetch(path: string, init: RequestInit = {}): Promise<R
 }
 
 // WHY: la forme de l'identifiant renvoyé dépend du moteur WAHA (WEBJS, NOWEB, GOWS).
-function extractMessageId(data: unknown): string | undefined {
+export function extractMessageId(data: unknown): string | undefined {
   if (!data || typeof data !== "object") return undefined;
   const d = data as Record<string, unknown>;
   if (typeof d.id === "string") return d.id;
@@ -284,7 +284,7 @@ export async function sendWhatsAppMessage(
  * Mémorise l'envoi pour le compteur quotidien du tableau de bord (sans le numéro du destinataire).
  * Un échec d'écriture ne fait jamais échouer l'envoi.
  */
-async function logSend(result: { success: boolean; messageId?: string; error?: string }): Promise<void> {
+export async function logSend(result: { success: boolean; messageId?: string; error?: string }): Promise<void> {
   try {
     const { createServiceClient } = await import("./supabase/server");
     await createServiceClient()

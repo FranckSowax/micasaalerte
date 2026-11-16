@@ -24,6 +24,7 @@ import {
   Wallet,
   Send,
   Flag,
+  Megaphone,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ const navItems = [
   { href: "/verifications", label: "À vérifier", icon: ClipboardCheck },
   { href: "/envois", label: "Envois", icon: Send },
   { href: "/avis", label: "Avis clients", icon: Flag },
+  { href: "/diffusion", label: "Diffusion", icon: Megaphone },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
