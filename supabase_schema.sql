@@ -561,8 +561,13 @@ ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS keywords_exclude TEXT[] DEFA
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS min_score INTEGER DEFAULT 50;
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS alert_mode TEXT DEFAULT 'immediate';
 ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS max_alerts_per_day INTEGER DEFAULT 5;
-ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_start SMALLINT DEFAULT 21;
-ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_end SMALLINT DEFAULT 7;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_start SMALLINT DEFAULT 23;
+ALTER TABLE client_demands ADD COLUMN IF NOT EXISTS quiet_end SMALLINT DEFAULT 6;
+-- Envois de 6 h à 23 h (avant : 7 h → 21 h). L'application traite déjà 21/7 comme 23/6 ;
+-- ces lignes alignent la base pour les nouveaux abonnés et les existants.
+ALTER TABLE client_demands ALTER COLUMN quiet_start SET DEFAULT 23;
+ALTER TABLE client_demands ALTER COLUMN quiet_end SET DEFAULT 6;
+UPDATE client_demands SET quiet_start = 23, quiet_end = 6 WHERE quiet_start = 21 AND quiet_end = 7;
 
 -- Clé d'unicité abonné + annonce + version : empêche tout doublon d'alerte.
 ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS annonce_version INTEGER NOT NULL DEFAULT 1;

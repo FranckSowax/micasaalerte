@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Annonce, ClientDemand } from "@/types/database";
-import { isQuietHour, localHour, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "./matching";
+import { isQuietHour, localHour, quietWindow, matchDemand, shouldSend, shouldSendForCheck, startOfLocalDayIso } from "./matching";
 
 function annonce(overrides: Record<string, unknown> = {}): Annonce {
   return {
@@ -292,6 +292,17 @@ describe("plage silencieuse et journée locale (Africa/Libreville, UTC+1)", () =
     expect(isQuietHour(new Date("2026-11-14T05:59:00Z"), 21, 7)).toBe(true); // 6h59
     expect(isQuietHour(new Date("2026-11-14T06:00:00Z"), 21, 7)).toBe(false); // 7h00
     expect(isQuietHour(new Date("2026-11-14T12:00:00Z"), 21, 7)).toBe(false);
+  });
+
+  it("envoie de 6 h à 23 h par défaut, y compris pour les abonnés à l'ancienne plage 21 h → 7 h", () => {
+    expect(quietWindow({})).toEqual([23, 6]);
+    expect(quietWindow({ quiet_start: 21, quiet_end: 7 })).toEqual([23, 6]);
+    expect(quietWindow({ quiet_start: 22, quiet_end: 8 })).toEqual([22, 8]);
+    const [start, end] = quietWindow({ quiet_start: 21, quiet_end: 7 });
+    expect(isQuietHour(new Date("2026-11-14T05:00:00Z"), start, end)).toBe(false); // 6h00 locale : envoi
+    expect(isQuietHour(new Date("2026-11-14T04:59:00Z"), start, end)).toBe(true); // 5h59 : silence
+    expect(isQuietHour(new Date("2026-11-14T21:30:00Z"), start, end)).toBe(false); // 22h30 : envoi
+    expect(isQuietHour(new Date("2026-11-14T22:00:00Z"), start, end)).toBe(true); // 23h00 : silence
   });
 
   it("gère une plage dans la même journée et une plage désactivée", () => {

@@ -6,9 +6,8 @@ import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage,
 import { needsExpiryNotice, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "@/lib/subscription";
 import {
   DEFAULT_MAX_ALERTS_PER_DAY,
-  DEFAULT_QUIET_END,
-  DEFAULT_QUIET_START,
   isQuietHour,
+  quietWindow,
   matchDemand,
   shouldSend,
   shouldSendForCheck,
@@ -219,7 +218,7 @@ async function handleCron(request: Request) {
     const annonces = ((rows || []) as unknown as Annonce[]).filter((a) => !isExpired(a, now));
 
     for (const demand of userDemands) {
-      if (!ignoreQuiet && isQuietHour(now, demand.quiet_start ?? DEFAULT_QUIET_START, demand.quiet_end ?? DEFAULT_QUIET_END)) {
+      if (!ignoreQuiet && isQuietHour(now, ...quietWindow(demand))) {
         stats.skippedQuiet++;
         continue;
       }

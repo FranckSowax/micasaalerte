@@ -11,8 +11,11 @@ import { DEFAULT_RADIUS_KM, distanceKm, locateAnnonce, locatePlace, type GeoPoin
 export const DEFAULT_MIN_SCORE = 50;
 /** Annonces ajoutées par jour à l'espace d'un abonné (les alertes sont un lien, pas une rafale de messages). */
 export const DEFAULT_MAX_ALERTS_PER_DAY = 100;
-export const DEFAULT_QUIET_START = 21;
-export const DEFAULT_QUIET_END = 7;
+/** Plage silencieuse par défaut : aucun envoi de 23 h à 6 h (heure de Libreville). */
+export const DEFAULT_QUIET_START = 23;
+export const DEFAULT_QUIET_END = 6;
+/** Ancienne plage par défaut (21 h → 7 h), encore enregistrée sur les abonnés existants. */
+const LEGACY_QUIET: [number, number] = [21, 7];
 export const ALERT_TIMEZONE = "Africa/Libreville";
 
 /** Valeur attribuée à une préférence quand l'annonce ne dit rien sur ce point. */
@@ -311,6 +314,19 @@ export function isQuietHour(date: Date, start = DEFAULT_QUIET_START, end = DEFAU
   if (start === end) return false;
   const hour = localHour(date);
   return start < end ? hour >= start && hour < end : hour >= start || hour < end;
+}
+
+/**
+ * Plage silencieuse d'un abonné. L'ancienne valeur par défaut de la base (21 h → 7 h), jamais
+ * choisie par l'abonné, est remplacée par la plage actuelle.
+ *
+ * @example quietWindow({ quiet_start: 21, quiet_end: 7 }) // [23, 6]
+ */
+export function quietWindow(demand: { quiet_start?: number | null; quiet_end?: number | null }): [number, number] {
+  const start = demand.quiet_start ?? DEFAULT_QUIET_START;
+  const end = demand.quiet_end ?? DEFAULT_QUIET_END;
+  if (start === LEGACY_QUIET[0] && end === LEGACY_QUIET[1]) return [DEFAULT_QUIET_START, DEFAULT_QUIET_END];
+  return [start, end];
 }
 
 /** Début de la journée locale en cours, en ISO UTC : borne du plafond d'alertes quotidien. */
