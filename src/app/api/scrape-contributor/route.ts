@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   if (!RAPIDAPI_COLLECT_ENABLED) {

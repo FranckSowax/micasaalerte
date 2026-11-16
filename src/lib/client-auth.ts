@@ -39,7 +39,7 @@ export async function authorizeClient(request: Request, token: string): Promise<
   const demand = data as DemandRow | null;
   if (!demand) return { error: NextResponse.json({ error: "Lien invalide ou expiré" }, { status: 404 }) };
 
-  const deviceId = cookies().get(DEVICE_COOKIE)?.value ?? null;
+  const deviceId = (await cookies()).get(DEVICE_COOKIE)?.value ?? null;
   const check = checkDevice(demand.device_hash as string | null, deviceId);
   if (check === "other_device") {
     return { error: NextResponse.json({ error: "Ce lien est déjà utilisé sur un autre appareil.", code: "other_device" }, { status: 403 }) };

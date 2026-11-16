@@ -5,8 +5,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-export function createClient() {
-  const cookieStore = cookies();
+/** Client Supabase de la session en cours (cookies de la requête). Asynchrone depuis Next 15. */
+export async function createClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     supabaseUrl,

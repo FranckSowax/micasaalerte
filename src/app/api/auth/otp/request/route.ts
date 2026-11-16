@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   }
   // Numéro inconnu : un défi est posé quand même, avec un code que personne ne reçoit.
 
-  cookies().set(OTP_COOKIE, cookie, {
+  (await cookies()).set(OTP_COOKIE, cookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

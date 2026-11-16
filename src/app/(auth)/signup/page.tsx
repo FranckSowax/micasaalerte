@@ -11,7 +11,8 @@ import { AgentSignupForm } from "./agent-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignupPage({ searchParams }: { searchParams: { agent?: string } }) {
+export default async function SignupPage(props: { searchParams: Promise<{ agent?: string }> }) {
+  const searchParams = await props.searchParams;
   if (searchParams.agent === "1") return <AgentSignupForm />;
 
   const ownerId = await ownerUserId();

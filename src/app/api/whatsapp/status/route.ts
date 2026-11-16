@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // État de la connexion WhatsApp (session WAHA), affiché dans les Paramètres.
 // Ne renvoie ni l'URL du serveur ni la clé d'API.
 export async function GET() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 

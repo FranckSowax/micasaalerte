@@ -20,7 +20,7 @@ const ActionSchema = z.object({
   action: z.enum(["send", "dismiss"]),
 });
 
-type Supabase = ReturnType<typeof createClient>;
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /** Envois déjà enregistrés pour ces clients ; tolère une base sans la colonne annonce_version. */
 async function loadSends(supabase: Supabase, demandIds: string[]): Promise<SendKey[]> {
@@ -32,7 +32,7 @@ async function loadSends(supabase: Supabase, demandIds: string[]): Promise<SendK
 }
 
 export async function GET() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
@@ -77,7 +77,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 

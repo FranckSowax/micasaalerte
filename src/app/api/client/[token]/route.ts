@@ -42,7 +42,8 @@ function digits(value: unknown): string | null {
   return d.length >= 8 ? d : null;
 }
 
-export async function GET(request: Request, { params }: { params: { token: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;
@@ -173,7 +174,8 @@ export async function GET(request: Request, { params }: { params: { token: strin
   );
 }
 
-export async function POST(request: Request, { params }: { params: { token: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;
@@ -220,7 +222,8 @@ async function autoWithdraw(supabase: ReturnType<typeof createServiceClient>, an
   if (updateError) console.error("Auto withdraw failed:", updateError.message);
 }
 
-export async function PATCH(request: Request, { params }: { params: { token: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;

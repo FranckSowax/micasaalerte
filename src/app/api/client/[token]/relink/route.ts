@@ -16,7 +16,8 @@ const HOUR_MS = 60 * 60_000;
 // Réponse identique que le lien existe ou non : on ne révèle rien à qui teste des jetons.
 const GENERIC = { success: true, message: "Si ce lien est valide, un nouveau lien vient d'être envoyé sur WhatsApp." };
 
-export async function POST(request: Request, { params }: { params: { token: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isValidToken(params.token)) return NextResponse.json(GENERIC);
 
   const ip = checkRateLimit(`relink:ip:${getClientIp(request)}`, PER_IP, HOUR_MS);

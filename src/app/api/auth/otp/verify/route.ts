@@ -20,23 +20,26 @@ const VerifySchema = z.object({ code: z.string().trim().regex(/^\d{6}$/) });
 // Défis déjà utilisés : un code ne sert qu'une fois (mémoire du processus, comme le limiteur).
 const usedNonces = new Set<string>();
 
+// Le cookie du défi est effacé sur la réponse elle-même (API cookies asynchrone depuis Next 15).
 const fail = (error: string, status: number, clear = false) => {
-  if (clear) cookies().delete(OTP_COOKIE);
-  return NextResponse.json({ error }, { status });
+  const response = NextResponse.json({ error }, { status });
+  if (clear) response.cookies.delete(OTP_COOKIE);
+  return response;
 };
 
 const done = (nonce: string, redirect: string) => {
   usedNonces.add(nonce);
   if (usedNonces.size > 5000) usedNonces.clear();
-  cookies().delete(OTP_COOKIE);
-  return NextResponse.json({ success: true, redirect });
+  const response = NextResponse.json({ success: true, redirect });
+  response.cookies.delete(OTP_COOKIE);
+  return response;
 };
 
 export async function POST(request: Request) {
   const parsed = VerifySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail("Le code comporte 6 chiffres.", 400);
 
-  const cookie = cookies().get(OTP_COOKIE)?.value;
+  const cookie = (await cookies()).get(OTP_COOKIE)?.value;
   const challenge = readChallenge(cookie);
   const secret = otpSecret();
   if (!challenge || !secret) return fail("Code expiré. Demandez un nouveau code.", 400, true);
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
     return fail("Connexion impossible. Utilisez la connexion par email.", 500);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error: sessionError } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
   if (sessionError) {
     console.error("OTP login session failed:", sessionError.message);

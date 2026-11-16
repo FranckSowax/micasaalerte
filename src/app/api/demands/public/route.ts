@@ -91,14 +91,14 @@ export async function POST(request: Request) {
   if (!accountCheck.allowed) return tooManyRequests(accountCheck.retryAfterSeconds);
 
   // Le code doit avoir été envoyé à ce numéro précis (défi signé déposé par /api/auth/otp/request).
-  const otpCookie = cookies().get(OTP_COOKIE)?.value;
+  const otpCookie = (await cookies()).get(OTP_COOKIE)?.value;
   const challenge = readChallenge(otpCookie);
   const secret = otpSecret();
   if (!challenge || !secret) {
     return NextResponse.json({ error: "Code expiré. Demandez un nouveau code." }, { status: 400 });
   }
   if (!checkRateLimit(`otp:verify:${challenge.nonce}`, OTP_MAX_ATTEMPTS, OTP_TTL_MS).allowed) {
-    cookies().delete(OTP_COOKIE);
+    (await cookies()).delete(OTP_COOKIE);
     return NextResponse.json({ error: "Trop d'essais. Demandez un nouveau code." }, { status: 429 });
   }
   const check = checkCode(otpCookie, input.code, secret);
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
     }
   }
 
-  cookies().delete(OTP_COOKIE);
+  (await cookies()).delete(OTP_COOKIE);
   return NextResponse.json({
     success: true,
     id: data.id,

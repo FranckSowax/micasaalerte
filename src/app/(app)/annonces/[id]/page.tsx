@@ -29,12 +29,13 @@ import { looksTruncated } from "@/lib/complete-annonce";
 import { ImageGallery } from "@/components/image-gallery";
 import type { Annonce } from "@/types/database";
 
-export default async function AnnonceDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const supabase = createClient();
+export default async function AnnonceDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 

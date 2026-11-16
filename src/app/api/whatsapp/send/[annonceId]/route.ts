@@ -7,11 +7,9 @@ import {
 } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 
-export async function POST(
-  _request: Request,
-  { params }: { params: { annonceId: string } }
-) {
-  const supabase = createClient();
+export async function POST(_request: Request, props: { params: Promise<{ annonceId: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 

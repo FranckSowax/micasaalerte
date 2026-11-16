@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, use } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
@@ -234,7 +234,8 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 /** Espace personnel d'un client : ses annonces, à contacter et à trier. */
-export default function ClientSpacePage({ params }: { params: { token: string } }) {
+export default function ClientSpacePage(props: { params: Promise<{ token: string }> }) {
+  const params = use(props.params);
   const [space, setSpace] = useState<ClientSpace | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "invalid" | "other_device" | "error">("loading");
   const [tab, setTab] = useState<Tab>("new");

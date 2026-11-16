@@ -72,7 +72,7 @@ const oneOf = <T extends readonly [string, ...string[]]>(values: T) =>
     z.enum(values).nullable()
   );
 const record = <T extends z.ZodTypeAny>(value: T) =>
-  z.preprocess((v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {}), z.record(value));
+  z.preprocess((v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {}), z.record(z.string(), value));
 
 // WHY: schéma tolérant — un champ mal formé devient null au lieu de faire échouer toute la fiche.
 const RawExtractionSchema = z.object({

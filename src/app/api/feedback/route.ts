@@ -44,7 +44,7 @@ const summary = (a: Annonce) => ({
 });
 
 export async function GET() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
@@ -154,7 +154,7 @@ function samplesOf(rows: Row[], annonces: Map<string, Annonce>): FeedbackSample[
  * Analyse d'ensemble du matching par le modèle : critères des abonnés, avis donnés, annonces
  * écartées. Aucune donnée personnelle n'est transmise (ni nom, ni numéro).
  */
-async function analyzeMatching(supabase: ReturnType<typeof createClient>, userId: string) {
+async function analyzeMatching(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   if (!isAIConfigured()) return NextResponse.json({ error: "Aucun modèle d'IA configuré." }, { status: 503 });
 
   const { data: demandRows } = await supabase.from("client_demands").select("*").eq("user_id", userId);
@@ -226,7 +226,7 @@ async function analyzeMatching(supabase: ReturnType<typeof createClient>, userId
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 

@@ -21,7 +21,8 @@ const PaymentSchema = z.object({
   plan: z.enum(PLAN_IDS).default("day"),
 });
 
-export async function POST(request: Request, { params }: { params: { token: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const auth = await authorizeClient(request, params.token);
   if (auth.error) return auth.error;
   const { supabase, demand, newDeviceId } = auth;

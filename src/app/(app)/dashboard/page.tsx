@@ -11,7 +11,7 @@ import Link from "next/link";
 import type { Annonce, FacebookGroup, DashboardStats } from "@/types/database";
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
