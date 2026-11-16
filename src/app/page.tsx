@@ -71,6 +71,18 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">
             Comment ça marche ?
           </h2>
+          {/* Vidéo de présentation (30 s, avec voix off). Rien n'est téléchargé avant la lecture. */}
+          <div className="max-w-4xl mx-auto mb-14 overflow-hidden rounded-2xl border border-border shadow-2xl bg-black">
+            <video
+              className="w-full aspect-video"
+              src="/video/micasa-gabon-16x9.mp4"
+              poster="/video/micasa-gabon-16x9.jpg"
+              controls
+              playsInline
+              preload="none"
+              aria-label="Présentation de Mi Casa Gabon en 30 secondes"
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
