@@ -39,3 +39,6 @@ next-env.d.ts
 # Vidéos marketing (projets HyperFrames, rendus et audio lourds) : jamais déployées
 /marketing-video/
 /marketing-video-16x9/
+
+# Prompts d agents d exploitation (fonctionnement interne) : jamais dans le depot public
+/docs/agents/
