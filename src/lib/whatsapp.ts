@@ -267,7 +267,7 @@ function extractMessageId(data: unknown): string | undefined {
 export async function sendWhatsAppMessage(
   recipient: string,
   message: string,
-  options: { group?: boolean } = {}
+  options: { group?: boolean; /** false si l'appelant enregistre lui-même l'envoi dans whatsapp_logs. */ log?: boolean } = {}
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const config = getWahaConfig();
   if (!config) return { success: false, error: "WAHA non configuré" };
@@ -275,10 +275,31 @@ export async function sendWhatsAppMessage(
   const chatId = toChatId(recipient, options);
   if (chatId.startsWith("@")) return { success: false, error: "Destinataire invalide" };
 
+  const result = await sendText(config.session, chatId, message);
+  if (options.log !== false) await logSend(result);
+  return result;
+}
+
+/**
+ * Mémorise l'envoi pour le compteur quotidien du tableau de bord (sans le numéro du destinataire).
+ * Un échec d'écriture ne fait jamais échouer l'envoi.
+ */
+async function logSend(result: { success: boolean; messageId?: string; error?: string }): Promise<void> {
+  try {
+    const { createServiceClient } = await import("./supabase/server");
+    await createServiceClient()
+      .from("whatsapp_logs")
+      .insert({ status: result.success ? "sent" : "failed", message_id: result.messageId ?? null, error_message: result.error?.slice(0, 300) ?? null });
+  } catch {
+    // Compteur indicatif : on n'empêche pas l'envoi pour lui.
+  }
+}
+
+async function sendText(session: string, chatId: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const response = await wahaFetch("/api/sendText", {
       method: "POST",
-      body: JSON.stringify({ session: config.session, chatId, text: message }),
+      body: JSON.stringify({ session, chatId, text: message }),
     });
 
     const data: unknown = await response.json().catch(() => null);

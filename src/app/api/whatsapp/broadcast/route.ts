@@ -54,6 +54,7 @@ export async function POST() {
 
       const result = await sendWhatsAppMessage(channel.phone_number, message, {
         group: channel.channel_type === "group",
+        log: false, // enregistré plus bas avec le canal
       });
 
       await serviceClient.from("whatsapp_logs").insert({
