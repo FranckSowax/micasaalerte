@@ -7,7 +7,7 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, Copy, ExternalLink, Flag, ThumbsDown, ThumbsUp, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Flag, Heart, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
 import { ZONE_COLOR } from "@/lib/map-format";
@@ -210,13 +210,59 @@ interface ClientSpace {
 /** Clé de la mémoire locale où l'appareil garde la date de la dernière visite. */
 const LAST_VISIT_KEY = "mca-derniere-visite";
 
-/** Raisons proposées après « Pas pertinente ». */
+/** Raisons proposées après « Pas pour moi » (les deux dernières écartent aussi pour les autres). */
 const REFUSAL_REASONS = [
   { id: "prix", label: "Le prix" },
   { id: "quartier", label: "Le quartier" },
   { id: "type", label: "Le type de bien" },
   { id: "equipement", label: "Les équipements" },
+  { id: "indisponible", label: "Déjà loué ou vendu" },
+  { id: "arnaque", label: "C'est une arnaque" },
 ];
+
+/** Clé de la mémoire locale : annonces dont l'abonné a contacté l'annonceur (id → date). */
+const CONTACTS_KEY = "mca-contacts";
+/** Clé de la mémoire locale : annonces dont la relance « Où en êtes-vous ? » est close (id → date). */
+const FOLLOWUPS_DONE_KEY = "mca-relances-closes";
+
+/** Couleurs reconnaissables de chaque plateforme (sans imiter leurs logos). */
+const SOURCE_STYLE: Record<ClientAnnonce["source"], { label: string; className: string }> = {
+  facebook: { label: "Voir l'annonce sur Facebook", className: "bg-[#1877F2] hover:bg-[#166FE5] text-white" },
+  tiktok: { label: "Voir la vidéo TikTok", className: "bg-[#010101] hover:bg-[#262626] text-white" },
+};
+// WHY: texte encre sur le vert vif — le blanc sur #22C55E est illisible en plein soleil.
+const WHATSAPP_CLASS = "bg-[#22C55E] hover:bg-[#1FB455] text-[#14241B]";
+const ACTION_BASE = "inline-flex w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-bold";
+
+/** Lit un objet JSON de la mémoire locale ; vide si indisponible ou illisible. */
+function readStore(key: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStore(key: string, value: Record<string, number>) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Navigation privée : l'information ne vit que le temps de la visite.
+  }
+}
+
+/**
+ * Premier message WhatsApp, pré-rempli : l'abonné n'a plus qu'à appuyer sur « Envoyer ».
+ * @example contactMessage(annonce) // « Bonjour, je vous contacte pour votre annonce « Appartement à Louis, 250 000 FCFA »… »
+ */
+function contactMessage(a: ClientAnnonce): string {
+  const titre = [
+    [a.typeBien ? getTypeBienLabel(a.typeBien) : "Logement", a.quartier || a.ville].filter(Boolean).join(" à "),
+    a.prix ? formatPrice(a.prix, a.devise || "FCFA") : null,
+  ].filter(Boolean).join(", ");
+  return `Bonjour, je vous contacte pour votre annonce « ${titre} » vue sur Mi Casa Alerte. Est-elle toujours disponible ? Quand puis-je visiter ?`;
+}
 const FEEDBACK_LABELS: Record<string, string> = {
   prix: "le prix ne convient pas",
   quartier: "le quartier ne convient pas",
@@ -232,7 +278,7 @@ const tabOf = (a: ClientAnnonce): Tab => (a.status === "new" && a.doubts?.length
 const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "Pour vous" },
   { key: "check", label: "À vérifier" },
-  { key: "kept", label: "Pertinentes" },
+  { key: "kept", label: "Intéressantes" },
   { key: "removed", label: "Écartées" },
 ];
 
@@ -263,6 +309,24 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   const [leaving, setLeaving] = useState(false);
   // Annonce pour laquelle l'abonné choisit la raison de « Pas pertinente ».
   const [reasonFor, setReasonFor] = useState<string | null>(null);
+  // Annonces dont l'abonné a contacté l'annonceur, et relances déjà répondues (mémoire du téléphone).
+  const [contacts, setContacts] = useState<Record<string, number>>({});
+  const [followupsDone, setFollowupsDone] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setContacts(readStore(CONTACTS_KEY));
+    setFollowupsDone(readStore(FOLLOWUPS_DONE_KEY));
+  }, []);
+  /** Note le contact : au retour sur la page, la carte demande « Où en êtes-vous ? ». */
+  const markContacted = (annonceId: string) => {
+    const next = { ...readStore(CONTACTS_KEY), [annonceId]: Date.now() };
+    writeStore(CONTACTS_KEY, next);
+    setContacts(next);
+  };
+  const closeFollowup = (annonceId: string) => {
+    const next = { ...readStore(FOLLOWUPS_DONE_KEY), [annonceId]: Date.now() };
+    writeStore(FOLLOWUPS_DONE_KEY, next);
+    setFollowupsDone(next);
+  };
 
   // Déconnexion : l'appareil n'est plus lié à l'espace ; retour par le lien WhatsApp ou par un code.
   const logout = async () => {
@@ -763,7 +827,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                 : tab === "check"
                   ? "Aucune annonce à vérifier. Ici arrivent les annonces qui correspondent à votre recherche mais à qui il manque une information, comme le prix."
                 : tab === "kept"
-                  ? "Vous n'avez encore marqué aucune annonce comme pertinente."
+                  ? "Aucune annonce gardée pour l'instant. Appuyez sur « Ça m'intéresse » pour la retrouver ici."
                   : "Aucune annonce écartée."}
             </CardContent>
           </Card>
@@ -803,66 +867,106 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                   {a.resume && <p className="text-sm">{a.resume}</p>}
                   {a.publishedAt && <p className="text-xs text-muted-foreground">Publiée le {formatDate(a.publishedAt)}</p>}
 
-                  <div className="flex flex-wrap gap-2">
-                    {a.whatsapp && (
-                      <a href={`https://wa.me/${a.whatsapp}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center h-9 px-3 rounded-md border border-input text-sm hover:bg-accent">
-                        <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp
-                      </a>
-                    )}
-                    {a.telephone && (
-                      <a href={`tel:+${a.telephone}`} className="inline-flex items-center h-9 px-3 rounded-md border border-input text-sm hover:bg-accent">
-                        <Phone className="h-4 w-4 mr-1" /> Appeler
-                      </a>
-                    )}
-                    {a.postUrl && (
-                      <a href={a.postUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center h-9 px-3 rounded-md border border-input text-sm hover:bg-accent">
-                        <ExternalLink className="h-4 w-4 mr-1" /> Voir sur {a.source === "tiktok" ? "TikTok" : "Facebook"}
-                      </a>
-                    )}
-                  </div>
-
-                  <div className="pt-3 border-t border-border space-y-3">
-                    {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] && (
-                      <p className="text-sm text-muted-foreground">Votre avis : {FEEDBACK_LABELS[a.feedback]}</p>
-                    )}
-
-                    {a.status !== "new" ? (
-                      <Button variant="outline" className="w-full min-h-[48px]" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
-                        <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre dans Pour vous" : "Restaurer"}
-                      </Button>
-                    ) : reasonFor === a.id ? (
-                      <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
-                        <p className="text-sm font-semibold">Qu&apos;est-ce qui ne convient pas ?</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {REFUSAL_REASONS.map((reason) => (
-                            <Button key={reason.id} variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", reason.id)} disabled={busy === a.id}>
-                              {reason.label}
+                  {(() => {
+                    const toSort = a.status === "new";
+                    const source = SOURCE_STYLE[a.source] ?? SOURCE_STYLE.facebook;
+                    const hasDirect = !!(a.whatsapp || a.telephone);
+                    const contacted = !!contacts[a.id];
+                    const askFollowup = toSort && contacted && !followupsDone[a.id];
+                    const step = (n: number, text: string) =>
+                      toSort ? (
+                        <p className="flex items-center gap-2 text-sm font-bold">
+                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#137638] text-xs text-white" aria-hidden="true">{n}</span>
+                          {text}
+                        </p>
+                      ) : null;
+                    let n = 0;
+                    return (
+                      <div className="pt-3 border-t border-border space-y-3">
+                        {askFollowup && (
+                          <div className="space-y-2 rounded-lg border border-[#137638]/40 bg-[#F5F8F6] p-3" role="group" aria-label="Suivi du contact">
+                            <p className="text-sm font-bold">Vous avez contacté l&apos;annonceur. Où en êtes-vous ?</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button className="min-h-[48px] h-auto whitespace-normal bg-[#137638] hover:bg-[#0F5F2D] text-white" onClick={() => { closeFollowup(a.id); act(a.id, "keep", "pertinente"); hintOnce("mca-astuce-visite", "Bonne visite ! L'annonce vous attend dans « Intéressantes »."); }} disabled={busy === a.id}>
+                                <Check className="h-4 w-4 mr-1" /> Visite prévue
+                              </Button>
+                              <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => { closeFollowup(a.id); setHint(a.telephone ? "Pas de réponse ? Essayez d'appeler : les annonceurs répondent souvent plus vite au téléphone." : "Pas de réponse ? Relancez demain matin, c'est souvent le meilleur moment."); }}>
+                                Pas de réponse
+                              </Button>
+                            </div>
+                            <Button variant="outline" className="w-full min-h-[44px]" onClick={() => { closeFollowup(a.id); act(a.id, "remove", "indisponible"); }} disabled={busy === a.id}>
+                              Déjà loué ou vendu
                             </Button>
-                          ))}
-                        </div>
-                        <Button variant="ghost" className="w-full min-h-[44px]" onClick={() => setReasonFor(null)}>Annuler</Button>
+                          </div>
+                        )}
+
+                        {a.postUrl && (
+                          <div className="space-y-2">
+                            {step(++n, hasDirect ? "Regardez l'annonce" : "Regardez l'annonce et contactez l'annonceur")}
+                            <a href={a.postUrl} target="_blank" rel="noopener noreferrer" className={`${ACTION_BASE} min-h-[48px] ${source.className}`} onClick={() => !hasDirect && markContacted(a.id)}>
+                              <ExternalLink className="h-4 w-4" aria-hidden="true" /> {source.label}
+                            </a>
+                          </div>
+                        )}
+
+                        {hasDirect && (
+                          <div className="space-y-2">
+                            {step(++n, a.doubts?.length ? "Confirmez l'info manquante" : "Demandez si c'est libre")}
+                            {a.whatsapp ? (
+                              <a href={`https://wa.me/${a.whatsapp}?text=${encodeURIComponent(contactMessage(a))}`} target="_blank" rel="noopener noreferrer" className={`${ACTION_BASE} min-h-[52px] text-base ${WHATSAPP_CLASS}`} onClick={() => markContacted(a.id)}>
+                                <MessageCircle className="h-5 w-5" aria-hidden="true" /> {contacted ? "Relancer sur WhatsApp" : "Demander une visite"}
+                              </a>
+                            ) : (
+                              <a href={`tel:+${a.telephone}`} className={`${ACTION_BASE} min-h-[52px] text-base ${WHATSAPP_CLASS}`} onClick={() => markContacted(a.id)}>
+                                <Phone className="h-5 w-5" aria-hidden="true" /> Appeler l&apos;annonceur
+                              </a>
+                            )}
+                            {a.whatsapp && a.telephone && (
+                              <a href={`tel:+${a.telephone}`} className={`${ACTION_BASE} min-h-[44px] border border-[#137638] text-[#137638] hover:bg-[#137638]/5`} onClick={() => markContacted(a.id)}>
+                                <Phone className="h-4 w-4" aria-hidden="true" /> Ou appeler
+                              </a>
+                            )}
+                            {toSort && a.whatsapp && !contacted && <p className="text-xs text-muted-foreground">Le message est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer.</p>}
+                          </div>
+                        )}
+
+                        {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] && (
+                          <p className="text-sm text-muted-foreground">Votre avis : {FEEDBACK_LABELS[a.feedback]}</p>
+                        )}
+
+                        {!toSort ? (
+                          <Button variant="outline" className="w-full min-h-[48px]" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
+                            <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre dans Pour vous" : "Restaurer"}
+                          </Button>
+                        ) : reasonFor === a.id ? (
+                          <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
+                            <p className="text-sm font-bold">Qu&apos;est-ce qui ne va pas ?</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {REFUSAL_REASONS.map((reason) => (
+                                <Button key={reason.id} variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", reason.id)} disabled={busy === a.id}>
+                                  {reason.id === "arnaque" && <Flag className="h-4 w-4 mr-1" />}
+                                  {reason.label}
+                                </Button>
+                              ))}
+                            </div>
+                            <Button variant="ghost" className="w-full min-h-[44px]" onClick={() => setReasonFor(null)}>Annuler</Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {step(++n, "Votre choix")}
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button className="min-h-[48px] h-auto whitespace-normal bg-[#137638] hover:bg-[#0F5F2D] text-white" onClick={() => act(a.id, "keep", "pertinente")} disabled={busy === a.id}>
+                                <Heart className="h-4 w-4 mr-1" /> Ça m&apos;intéresse
+                              </Button>
+                              <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal bg-[#EEF2EF] border-transparent text-[#14241B] hover:bg-[#E2E8E4]" onClick={() => setReasonFor(a.id)} disabled={busy === a.id}>
+                                <X className="h-4 w-4 mr-1" /> Pas pour moi
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button className="min-h-[48px] bg-green-600 hover:bg-green-700 text-white" onClick={() => act(a.id, "keep", "pertinente")} disabled={busy === a.id}>
-                            <ThumbsUp className="h-4 w-4 mr-1" /> Pertinente
-                          </Button>
-                          <Button className="min-h-[48px] bg-red-600 hover:bg-red-700 text-white" onClick={() => setReasonFor(a.id)} disabled={busy === a.id}>
-                            <ThumbsDown className="h-4 w-4 mr-1" /> Pas pertinente
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", "indisponible")} disabled={busy === a.id}>
-                            Déjà loué ou vendu
-                          </Button>
-                          <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", "arnaque")} disabled={busy === a.id}>
-                            <Flag className="h-4 w-4 mr-1" /> Signaler une arnaque
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Flag, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet } from "lucide-react";
+import { ExternalLink, Flag, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Heart, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Découverte de l'espace client à la première visite : 5 cartes courtes qui montrent les vrais
@@ -58,23 +58,27 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
       <ul className="space-y-3">
         <Line chip={<Chip tone="primary">Pour vous</Chip>}>Les annonces qui correspondent à vos critères.</Line>
         <Line chip={<Chip>À vérifier</Chip>}>Il manque une information, souvent le prix : appelez l&apos;annonceur pour la confirmer.</Line>
-        <Line chip={<Chip>Pertinentes</Chip>}>Celles que vous avez gardées.</Line>
+        <Line chip={<Chip>Intéressantes</Chip>}>Celles que vous avez gardées.</Line>
         <Line chip={<Chip>Écartées</Chip>}>Celles que vous avez mises de côté.</Line>
         <Line chip={<Chip tone="amber" icon={<Sparkles className={icon} />}>Nouvelle annonce</Chip>}>Arrivée depuis votre dernière visite.</Line>
       </ul>
     ),
   },
   {
-    emoji: "👍🏾👎🏾",
-    title: "Triez vos annonces",
+    emoji: "1️⃣2️⃣3️⃣",
+    title: "À chaque annonce, 3 étapes",
     body: (
       <ul className="space-y-3">
-        <Line chip={<Chip tone="green" icon={<ThumbsUp className={icon} />}>Pertinente</Chip>}>L&apos;annonce passe dans « Pertinentes ».</Line>
-        <Line chip={<Chip tone="red" icon={<ThumbsDown className={icon} />}>Pas pertinente</Chip>}>
+        <Line chip={<Chip icon={<ExternalLink className={icon} />}>Voir l&apos;annonce</Chip>}>1. Regardez les photos sur Facebook ou TikTok.</Line>
+        <Line chip={<Chip tone="green" icon={<MessageCircle className={icon} />}>Demander une visite</Chip>}>
+          2. Le message WhatsApp est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer. À votre retour, on vous demande où vous en êtes.
+        </Line>
+        <Line chip={<Chip tone="green" icon={<Heart className={icon} />}>Ça m&apos;intéresse</Chip>}>3. L&apos;annonce passe dans « Intéressantes ».</Line>
+        <Line chip={<Chip icon={<X className={icon} />}>Pas pour moi</Chip>}>
           Dites pourquoi (le prix, le quartier, le type de bien…) : <b>la sélection apprend de vos réponses</b>.
         </Line>
         <Line chip={<Chip icon={<RotateCcw className={icon} />}>Restaurer</Chip>}>Vous changez d&apos;avis à tout moment.</Line>
-        <Line chip={<Chip icon={<Flag className={icon} />}>Signaler une arnaque</Chip>}>Après 5 signalements, l&apos;annonce est retirée pour tous.</Line>
+        <Line chip={<Chip icon={<Flag className={icon} />}>C&apos;est une arnaque</Chip>}>Dans « Pas pour moi ». Après 5 signalements, l&apos;annonce est retirée pour tous.</Line>
       </ul>
     ),
   },
