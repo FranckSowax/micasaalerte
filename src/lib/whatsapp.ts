@@ -274,22 +274,24 @@ export async function sendWhatsAppMessage(
     /** Photo publique (https) jointe au message, qui devient sa légende. */
     image?: string | null;
   } = {}
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; /** Photo refusée : le texte est parti seul. */ imageError?: string }> {
   const config = getWahaConfig();
   if (!config) return { success: false, error: "WAHA non configuré" };
 
   const chatId = toChatId(recipient, options);
   if (chatId.startsWith("@")) return { success: false, error: "Destinataire invalide" };
 
-  let result = options.image ? await sendImage(config.session, chatId, options.image, message) : null;
+  const withImage = options.image ? await sendImage(config.session, chatId, options.image, message) : null;
+  if (withImage?.success) {
+    if (options.log !== false) await logSend(withImage);
+    return withImage;
+  }
   // WHY: une photo refusée (lien mort, moteur WAHA sans envoi de média) ne doit jamais priver
   // l'abonné de son lien : on renvoie alors le texte seul.
-  if (!result?.success) {
-    if (result) console.error("WhatsApp image send failed, falling back to text:", result.error);
-    result = await sendText(config.session, chatId, message);
-  }
+  if (withImage) console.error("WhatsApp image send failed, falling back to text:", withImage.error);
+  const result = await sendText(config.session, chatId, message);
   if (options.log !== false) await logSend(result);
-  return result;
+  return withImage ? { ...result, imageError: withImage.error || "photo refusée" } : result;
 }
 
 /** Clé de wa_settings où l'admin range la photo jointe aux messages « lien de l'espace ». */

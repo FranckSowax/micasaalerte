@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
+import { ImageIcon, Loader2, Send, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -42,6 +42,22 @@ export function WhatsAppImageSetting() {
     setState("idle");
   };
 
+  /** Envoie le message type, avec la photo, au numéro WhatsApp du profil de l'agent. */
+  const sendTest = async () => {
+    setState("saving");
+    setMessage(null);
+    try {
+      const res = await fetch("/api/settings/whatsapp-image/test", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { withImage?: boolean; imageError?: string | null; error?: string };
+      if (!res.ok) setMessage({ ok: false, text: data.error || "L'envoi a échoué. Réessayez." });
+      else if (data.imageError) setMessage({ ok: false, text: `Le texte est parti, mais WhatsApp a refusé l'image : ${data.imageError}` });
+      else setMessage({ ok: true, text: data.withImage ? "Test envoyé avec l'image sur votre WhatsApp." : "Test envoyé (sans image) sur votre WhatsApp." });
+    } catch {
+      setMessage({ ok: false, text: "Connexion impossible. Réessayez." });
+    }
+    setState("idle");
+  };
+
   const upload = (file: File | undefined) => {
     if (!file) return;
     const body = new FormData();
@@ -70,12 +86,15 @@ export function WhatsAppImageSetting() {
             <ImageIcon className="h-4 w-4" aria-hidden="true" /> Aucune image
           </div>
         )}
-        <p className="text-xs text-muted-foreground">JPG ou PNG, 5 Mo au plus. Format conseillé : carré 1080 × 1080.</p>
+        <p className="text-xs text-muted-foreground">JPG ou PNG, 5 Mo au plus. Format conseillé : carré 1080 × 1080. Le test part vers le « Téléphone WhatsApp » de votre profil.</p>
         <input ref={input} type="file" accept="image/jpeg,image/png" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => input.current?.click()} disabled={state !== "idle"}>
             {state === "saving" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
             {url ? "Remplacer l'image" : "Choisir une image"}
+          </Button>
+          <Button type="button" variant="outline" onClick={sendTest} disabled={state !== "idle"}>
+            <Send className="h-4 w-4 mr-2" /> M&apos;envoyer un test
           </Button>
           {url && (
             <Button type="button" variant="outline" onClick={() => call({ method: "DELETE" }, "Image retirée : les messages partent en texte seul.")} disabled={state !== "idle"}>

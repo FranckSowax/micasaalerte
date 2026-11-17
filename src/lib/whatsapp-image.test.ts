@@ -40,6 +40,7 @@ describe("message WhatsApp avec image", () => {
     answers = [422, 200];
     const result = await sendWhatsAppMessage("24177000000", "Bonjour", { image: IMAGE, log: false });
     expect(result.success).toBe(true);
+    expect(result.imageError).toContain("422");
     expect(calls.map((c) => c.path)).toEqual(["/api/sendImage", "/api/sendText"]);
     expect(calls[1].body).toEqual({ session: "default", chatId: "24177000000@c.us", text: "Bonjour" });
   });
