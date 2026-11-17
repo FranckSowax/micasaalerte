@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { fetchAllowedAgentIds } from "@/lib/agent-access";
 import { isExpired } from "@/lib/annonce-lifetime";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
-import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured } from "@/lib/whatsapp";
+import { formatAccessEndedMessage, formatClientLinkMessage, sendWhatsAppMessage, isWahaConfigured, clientLinkImage } from "@/lib/whatsapp";
 import { needsExpiryNotice, planOffer, subscriptionState, SUBSCRIPTION_PLANS } from "@/lib/subscription";
 import {
   DEFAULT_MAX_ALERTS_PER_DAY,
@@ -176,11 +176,14 @@ async function handleCron(request: Request) {
     if (!token) return NextResponse.json({ error: "Migration SQL requise" }, { status: 500 });
     const sent = await sendWhatsAppMessage(
       demand.client_phone,
-      formatClientLinkMessage({ name: demand.client_name, link: clientLink(token), resend: true })
+      formatClientLinkMessage({ name: demand.client_name, link: clientLink(token), resend: true }),
+      { image: await clientLinkImage() }
     );
     return NextResponse.json({ success: sent.success, linksResent: sent.success ? 1 : 0 }, { status: sent.success ? 200 : 502 });
   }
 
+  // Photo des messages WhatsApp (Paramètres), lue une fois pour toute la tournée.
+  const linkImage = await clientLinkImage();
   const byUser = new Map<string, ClientDemand[]>();
   for (const d of demands) {
     const demand = d as unknown as ClientDemand;
@@ -312,7 +315,8 @@ async function handleCron(request: Request) {
       // comme reçu et les mêmes annonces seront proposées au passage suivant.
       const result = await sendWhatsAppMessage(
         demand.client_phone,
-        formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(token) })
+        formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(token) }),
+        { image: linkImage }
       );
       if (!result.success) {
         stats.failed++;

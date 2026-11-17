@@ -6,7 +6,7 @@ import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { checkCode, normalizePhone, OTP_COOKIE, OTP_MAX_ATTEMPTS, OTP_TTL_MS, readChallenge } from "@/lib/login-otp";
 import { otpSecret } from "@/lib/login-otp-server";
 import { pickForDemand, recordSelection } from "@/lib/selection";
-import { formatClientLinkMessage, isWahaConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { formatClientLinkMessage, isWahaConfigured, sendWhatsAppMessage, clientLinkImage } from "@/lib/whatsapp";
 import type { ClientDemand } from "@/types/database";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -203,7 +203,8 @@ export async function POST(request: Request) {
         const sent = isWahaConfigured()
           ? await sendWhatsAppMessage(
               demand.client_phone,
-              formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(linkToken), welcome: true })
+              formatClientLinkMessage({ name: demand.client_name, count: picked.length, link: clientLink(linkToken), welcome: true }),
+              { image: await clientLinkImage() }
             )
           : { success: false as const, messageId: undefined };
         if (!sent.success) console.error("Signup WhatsApp message failed");

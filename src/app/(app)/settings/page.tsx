@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, Eye, EyeOff } from "lucide-react";
 import type { Profile } from "@/types/database";
+import { WhatsAppImageSetting } from "@/components/whatsapp-image-setting";
 
 const WA_STATUS_LABELS: Record<string, string> = {
   WORKING: "Connecté",
@@ -218,6 +219,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <WhatsAppImageSetting />
 
       <Button onClick={handleSave} disabled={saving} className="w-full">
         {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}

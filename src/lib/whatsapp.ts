@@ -267,7 +267,13 @@ export function extractMessageId(data: unknown): string | undefined {
 export async function sendWhatsAppMessage(
   recipient: string,
   message: string,
-  options: { group?: boolean; /** false si l'appelant enregistre lui-même l'envoi dans whatsapp_logs. */ log?: boolean } = {}
+  options: {
+    group?: boolean;
+    /** false si l'appelant enregistre lui-même l'envoi dans whatsapp_logs. */
+    log?: boolean;
+    /** Photo publique (https) jointe au message, qui devient sa légende. */
+    image?: string | null;
+  } = {}
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const config = getWahaConfig();
   if (!config) return { success: false, error: "WAHA non configuré" };
@@ -275,9 +281,35 @@ export async function sendWhatsAppMessage(
   const chatId = toChatId(recipient, options);
   if (chatId.startsWith("@")) return { success: false, error: "Destinataire invalide" };
 
-  const result = await sendText(config.session, chatId, message);
+  let result = options.image ? await sendImage(config.session, chatId, options.image, message) : null;
+  // WHY: une photo refusée (lien mort, moteur WAHA sans envoi de média) ne doit jamais priver
+  // l'abonné de son lien : on renvoie alors le texte seul.
+  if (!result?.success) {
+    if (result) console.error("WhatsApp image send failed, falling back to text:", result.error);
+    result = await sendText(config.session, chatId, message);
+  }
   if (options.log !== false) await logSend(result);
   return result;
+}
+
+/** Clé de wa_settings où l'admin range la photo jointe aux messages « lien de l'espace ». */
+export const CLIENT_LINK_IMAGE_KEY = "client_link_image";
+
+/**
+ * Photo jointe aux messages qui envoient le lien de l'espace client, choisie dans Paramètres.
+ * Renvoie null si aucune photo n'est réglée ou si la lecture échoue (le message part alors en texte).
+ *
+ * @example await sendWhatsAppMessage(phone, text, { image: await clientLinkImage() });
+ */
+export async function clientLinkImage(): Promise<string | null> {
+  try {
+    const { createServiceClient } = await import("./supabase/server");
+    const { data } = await createServiceClient().from("wa_settings").select("value").eq("key", CLIENT_LINK_IMAGE_KEY).maybeSingle();
+    const url = (data?.value as { url?: unknown } | null)?.url;
+    return typeof url === "string" && url.startsWith("https://") ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -295,11 +327,20 @@ export async function logSend(result: { success: boolean; messageId?: string; er
   }
 }
 
-async function sendText(session: string, chatId: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+function sendText(session: string, chatId: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  return wahaSend("/api/sendText", { session, chatId, text: message });
+}
+
+function sendImage(session: string, chatId: string, url: string, caption: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const mimetype = /\.png(\?|$)/i.test(url) ? "image/png" : "image/jpeg";
+  return wahaSend("/api/sendImage", { session, chatId, caption, file: { url, mimetype } });
+}
+
+async function wahaSend(path: string, body: Record<string, unknown>): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const response = await wahaFetch("/api/sendText", {
+    const response = await wahaFetch(path, {
       method: "POST",
-      body: JSON.stringify({ session, chatId, text: message }),
+      body: JSON.stringify(body),
     });
 
     const data: unknown = await response.json().catch(() => null);

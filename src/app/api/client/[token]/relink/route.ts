@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { clientLink, generateAccessToken, isValidToken } from "@/lib/client-access";
 import { checkRateLimit, getClientIp } from "@/lib/request-limit";
-import { formatClientLinkMessage, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { formatClientLinkMessage, sendWhatsAppMessage, clientLinkImage } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 
 // Lien ouvert sur un autre appareil : on en envoie un NOUVEAU sur le numéro WhatsApp
@@ -44,7 +44,8 @@ export async function POST(request: Request, props: { params: Promise<{ token: s
 
   const result = await sendWhatsAppMessage(
     demand.client_phone as string,
-    formatClientLinkMessage({ name: demand.client_name as string | null, link: clientLink(token), renewed: true })
+    formatClientLinkMessage({ name: demand.client_name as string | null, link: clientLink(token), renewed: true }),
+    { image: await clientLinkImage() }
   );
   if (!result.success) console.error("Relink WhatsApp send failed:", result.error);
 

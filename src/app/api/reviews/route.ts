@@ -1,7 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { clientLink, generateAccessToken } from "@/lib/client-access";
 import { annonceVersion, pendingReviews, REVIEW_DISMISSED, type SendKey } from "@/lib/review";
-import { formatClientLinkMessage, isWahaConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { formatClientLinkMessage, isWahaConfigured, sendWhatsAppMessage, clientLinkImage } from "@/lib/whatsapp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Annonce, ClientDemand } from "@/types/database";
@@ -131,7 +131,8 @@ export async function POST(request: Request) {
   // On envoie d'abord, on enregistre ensuite : un envoi raté ne marque rien comme reçu.
   const result = await sendWhatsAppMessage(
     demand.client_phone,
-    formatClientLinkMessage({ name: demand.client_name, count: 1, link: clientLink(token) })
+    formatClientLinkMessage({ name: demand.client_name, count: 1, link: clientLink(token) }),
+    { image: await clientLinkImage() }
   );
   if (!result.success) return NextResponse.json({ error: "L'envoi WhatsApp a échoué. Réessayez." }, { status: 502 });
 
