@@ -300,7 +300,10 @@ const TABS: { key: Tab; label: string }[] = [
 /** « Mes annonces » regroupe les annonces déjà triées : gardées, ou écartées (sélecteur). */
 const isMine = (t: Tab) => t === "kept" || t === "removed";
 // WHY: les trois onglets tiennent sur une ligne dès 360 px ; au-delà, ils se partagent la largeur.
-const TAB_CLASS = "min-h-[40px] flex-auto whitespace-nowrap px-2.5 text-[13px]";
+const TAB_CLASS = "inline-flex min-h-[44px] flex-auto items-center justify-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F0EFED] motion-reduce:transition-none";
+/** Onglet actif : olive plein ; sinon surface beige bordée (palette de la carte d'annonce). */
+const tabClass = (active: boolean) =>
+  `${TAB_CLASS} ${active ? "bg-[#4A6741] text-[#FAF8F5] hover:bg-[#3A5533]" : "border border-[#E1DCD5] bg-[#FAF8F5] text-[#2D2420] hover:bg-[#E5ECDF]"}`;
 
 /** Espace personnel d'un client : ses annonces, à contacter et à trier. */
 export default function ClientSpacePage(props: { params: Promise<{ token: string }> }) {
@@ -314,7 +317,8 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
   const [plan, setPlan] = useState("day");
   const [copied, setCopied] = useState(false);
-  const [showMap, setShowMap] = useState(false);
+  // Carte affichée d'emblée : l'abonné situe tout de suite les annonces de l'onglet ouvert.
+  const [showMap, setShowMap] = useState(true);
 
   /** Copie la référence de commande, à coller dans le menu Airtel Money. */
   const copyReference = async (reference: string) => {
@@ -784,24 +788,24 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
         {/* À trier (« Pour vous », « À vérifier ») puis déjà trié (« Mes annonces »). */}
         <div className="flex flex-wrap gap-1.5" role="tablist">
           {([["new", "Pour vous", counts.new], ["check", "À vérifier", counts.check]] as const).map(([key, label, count]) => (
-            <Button key={key} role="tab" aria-selected={tab === key} variant={tab === key ? "default" : "outline"} size="sm" className={TAB_CLASS} onClick={() => setTab(key)}>
+            <button key={key} type="button" role="tab" aria-selected={tab === key} className={tabClass(tab === key)} onClick={() => setTab(key)}>
               {label} ({count})
-            </Button>
+            </button>
           ))}
-          <Button role="tab" aria-selected={isMine(tab)} variant={isMine(tab) ? "default" : "outline"} size="sm" className={TAB_CLASS} onClick={() => { if (!isMine(tab)) setTab("kept"); }}>
+          <button type="button" role="tab" aria-selected={isMine(tab)} className={tabClass(isMine(tab))} onClick={() => { if (!isMine(tab)) setTab("kept"); }}>
             Mes annonces ({counts.kept})
-          </Button>
+          </button>
         </div>
 
         {isMine(tab) && (
-          <div className="inline-flex rounded-full border border-border bg-card p-1" role="group" aria-label="Annonces à afficher">
+          <div className="inline-flex rounded-full border border-[#E1DCD5] bg-[#FAF8F5] p-1" role="group" aria-label="Annonces à afficher">
             {([["kept", "Gardées"], ["removed", "Écartées"]] as const).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
                 aria-pressed={tab === key}
                 onClick={() => setTab(key)}
-                className={`min-h-[40px] rounded-full px-4 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${tab === key ? "bg-[#2D2420] text-[#FAF8F5]" : "text-muted-foreground hover:bg-muted"}`}
+                className={`min-h-[40px] rounded-full px-4 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] motion-reduce:transition-none ${tab === key ? "bg-[#2D2420] text-[#FAF8F5]" : "text-[#6B615B] hover:bg-[#E5ECDF]"}`}
               >
                 {label} ({counts[key]})
               </button>
@@ -845,10 +849,10 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
           </div>
         )}
 
-        {/* La carte n'est chargée que sur demande : la liste des annonces arrive tout de suite. */}
-        <Button variant="outline" className="w-full min-h-[48px]" aria-expanded={showMap} onClick={() => setShowMap(!showMap)}>
-          <MapPin className="h-4 w-4 mr-1" /> {showMap ? "Masquer la carte" : "Voir sur la carte"}
-        </Button>
+        {/* Carte ouverte par défaut, repliable ; Leaflet se charge à part (la liste ne l'attend pas). */}
+        <button type="button" className="inline-flex w-full min-h-[48px] items-center justify-center gap-2 rounded-full border border-[#E1DCD5] bg-[#FAF8F5] text-sm font-semibold text-[#2D2420] transition-colors duration-200 hover:bg-[#E5ECDF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] motion-reduce:transition-none" aria-expanded={showMap} onClick={() => setShowMap(!showMap)}>
+          <MapPin className="h-4 w-4" aria-hidden="true" /> {showMap ? "Masquer la carte" : "Voir sur la carte"}
+        </button>
         {showMap && (
           <p className="text-xs text-muted-foreground -mb-2" role="status" aria-live="polite">
             Carte : {mappedCount} annonce{mappedCount > 1 ? "s" : ""} « {TABS.find((t) => t.key === tab)?.label} »
