@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Flag, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Heart, Wallet, X } from "lucide-react";
+import { ExternalLink, Flag, MapPin, MessageCircle, Phone, Play, SlidersHorizontal, Sparkles, Heart, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Découverte de l'espace client à la première visite : 5 cartes courtes qui montrent les vrais
@@ -12,7 +12,7 @@ export const ONBOARDING_KEY = "mca-decouverte-vue";
 
 /** Copie visuelle d'un bouton de l'espace client (non cliquable). */
 // Mêmes couleurs que dans l'espace client (voir app/c/[token]/page.tsx).
-function Chip({ icon, children, tone = "outline" }: { icon?: ReactNode; children: ReactNode; tone?: "outline" | "primary" | "amber" | "green" | "red" | "trial" }) {
+function Chip({ icon, children, tone = "outline" }: { icon?: ReactNode; children: ReactNode; tone?: "outline" | "primary" | "amber" | "green" | "red" | "trial" | "olive" | "dark" | "facebook" }) {
   const styles = {
     outline: "border border-input bg-background text-foreground",
     primary: "bg-primary text-primary-foreground",
@@ -20,6 +20,9 @@ function Chip({ icon, children, tone = "outline" }: { icon?: ReactNode; children
     green: "bg-green-600 text-white",
     red: "bg-red-600 text-white",
     trial: "bg-amber-500 text-black rounded-full px-3 py-1 text-xs",
+    olive: "bg-[#4A6741] text-[#FAF8F5] rounded-full",
+    dark: "bg-[#2D2420] text-[#FAF8F5] rounded-full",
+    facebook: "bg-[#1877F2] text-white rounded-full",
   }[tone];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold ${styles}`} aria-hidden="true">
@@ -53,32 +56,33 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
   },
   {
     emoji: "🗂️",
-    title: "Vos 4 onglets",
+    title: "Vos 3 onglets",
     body: (
       <ul className="space-y-3">
         <Line chip={<Chip tone="primary">Pour vous</Chip>}>Les annonces qui correspondent à vos critères.</Line>
         <Line chip={<Chip>À vérifier</Chip>}>Il manque une information, souvent le prix : appelez l&apos;annonceur pour la confirmer.</Line>
-        <Line chip={<Chip>Intéressantes</Chip>}>Celles que vous avez gardées.</Line>
-        <Line chip={<Chip>Écartées</Chip>}>Celles que vous avez mises de côté.</Line>
+        <Line chip={<Chip>Mes annonces</Chip>}>Celles que vous avez triées : « Gardées » ou « Écartées », au choix.</Line>
         <Line chip={<Chip tone="amber" icon={<Sparkles className={icon} />}>Nouvelle annonce</Chip>}>Arrivée depuis votre dernière visite.</Line>
       </ul>
     ),
   },
   {
-    emoji: "1️⃣2️⃣3️⃣",
-    title: "À chaque annonce, 3 étapes",
+    emoji: "🏡",
+    title: "Sur chaque annonce",
     body: (
       <ul className="space-y-3">
-        <Line chip={<Chip icon={<ExternalLink className={icon} />}>Voir l&apos;annonce</Chip>}>1. Regardez les photos sur Facebook ou TikTok.</Line>
-        <Line chip={<Chip tone="green" icon={<MessageCircle className={icon} />}>Demander une visite</Chip>}>
-          2. Le message WhatsApp est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer. À votre retour, on vous demande où vous en êtes.
+        <Line chip={<span className="flex flex-wrap gap-2"><Chip tone="dark" icon={<Play className={icon} />}>Voir la vidéo</Chip><Chip tone="facebook" icon={<ExternalLink className={icon} />}>Voir l&apos;annonce</Chip></span>}>
+          Sur la photo : la publication d&apos;origine, sur TikTok ou Facebook.
         </Line>
-        <Line chip={<Chip tone="green" icon={<Heart className={icon} />}>Ça m&apos;intéresse</Chip>}>3. L&apos;annonce passe dans « Intéressantes ».</Line>
+        <Line chip={<Chip tone="olive" icon={<MessageCircle className={icon} />}>Demander une visite</Chip>}>
+          Le message WhatsApp est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer. Prix absent ? Le bouton propose de le demander. À votre retour, on vous demande où vous en êtes.
+        </Line>
+        <Line chip={<Chip tone="olive" icon={<Heart className={icon} />}>Ça m&apos;intéresse</Chip>}>L&apos;annonce passe dans « Mes annonces ».</Line>
         <Line chip={<Chip icon={<X className={icon} />}>Pas pour moi</Chip>}>
-          Dites pourquoi (le prix, le quartier, le type de bien…) : <b>la sélection apprend de vos réponses</b>.
+          Dites pourquoi (le prix, le quartier, le type de bien…) : <b>la sélection apprend de vos réponses</b>. « Annuler » la remet en place.
         </Line>
-        <Line chip={<Chip icon={<RotateCcw className={icon} />}>Restaurer</Chip>}>Vous changez d&apos;avis à tout moment.</Line>
         <Line chip={<Chip icon={<Flag className={icon} />}>C&apos;est une arnaque</Chip>}>Dans « Pas pour moi ». Après 5 signalements, l&apos;annonce est retirée pour tous.</Line>
+        <Line chip={<Chip>Votre choix</Chip>}>Vous changez d&apos;avis ? Appuyez de nouveau sur votre choix.</Line>
       </ul>
     ),
   },
@@ -90,8 +94,7 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
         <Line chip={<span className="flex flex-wrap gap-2"><Chip icon={<Phone className={icon} />}>Appeler</Chip><Chip icon={<MessageCircle className={icon} />}>WhatsApp</Chip></span>}>
           Vous joignez l&apos;annonceur, sans intermédiaire.
         </Line>
-        <Line chip={<Chip icon={<ExternalLink className={icon} />}>Voir sur Facebook</Chip>}>La publication d&apos;origine, avec toutes ses photos.</Line>
-        <Line chip={<Chip icon={<MapPin className={icon} />}>Voir sur la carte</Chip>}>Situez les annonces de l&apos;onglet ouvert.</Line>
+                <Line chip={<Chip icon={<MapPin className={icon} />}>Voir sur la carte</Chip>}>Situez les annonces de l&apos;onglet ouvert.</Line>
       </ul>
     ),
   },

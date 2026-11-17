@@ -1,18 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useState, use, type ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { ClientOnboarding, onboardingSeen } from "@/components/client-onboarding";
 import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, Copy, ExternalLink, Flag, Heart, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Flag, Heart, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, Play, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
 import { ZONE_COLOR } from "@/lib/map-format";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
-import { formatDate, formatPrice, getTypeBienLabel, getTypeOffreLabel } from "@/lib/utils";
+import { formatDate, formatPrice, getTypeBienLabel } from "@/lib/utils";
+import { cardDescription, cardMeta, cardPhotoLabel, cardPlace, cardPrice, cardTitle, otherDoubts, primaryAction, publishedLabel } from "@/lib/client-card";
 
 // Même police et même thème clair que l'inscription : l'abonné ne change pas d'univers.
 const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallback: false });
@@ -21,16 +22,26 @@ const font = Nunito_Sans({ subsets: ["latin"], display: "swap", adjustFontFallba
  * Photos d'une annonce. Plusieurs photos : galerie à faire glisser horizontalement, avec un
  * compteur. Une photo qui ne charge plus (lien expiré) est retirée sans laisser de trou.
  */
-function PhotoGallery({ photos }: { photos: string[] }) {
+function PhotoGallery({ photos, label, topLeft, bottomRight, empty }: {
+  photos: string[];
+  /** Description du bien pour le texte alternatif (« Maison à Angondjé, Akanda »). */
+  label: string;
+  /** Posé en haut à gauche de la photo (badge « Nouvelle annonce »). */
+  topLeft?: ReactNode;
+  /** Posé en bas à droite de la photo (bouton vers l'annonce d'origine). */
+  bottomRight?: ReactNode;
+  /** Rendu à la place de la galerie quand aucune photo ne s'affiche. */
+  empty?: ReactNode;
+}) {
   const [broken, setBroken] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const shown = photos.filter((p) => !broken.includes(p));
-  if (!shown.length) return null;
+  if (!shown.length) return <>{empty}</>;
 
   return (
-    <div className="relative bg-muted">
+    <div className="relative aspect-[16/10] bg-[#E1DCD5]">
       <div
-        className="flex overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex h-full overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="group"
         aria-label={shown.length > 1 ? `${shown.length} photos de l'annonce, faites glisser pour les voir` : "Photo de l'annonce"}
         tabIndex={shown.length > 1 ? 0 : -1}
@@ -44,25 +55,29 @@ function PhotoGallery({ photos }: { photos: string[] }) {
           <img
             key={src}
             src={src}
-            alt={`Photo ${i + 1} sur ${shown.length}`}
-            className="w-full h-56 shrink-0 snap-center object-cover"
+            alt={`Photo ${i + 1} sur ${shown.length} : ${label}`}
+            className="h-full w-full shrink-0 snap-center object-cover [object-position:50%_54%]"
             loading="lazy"
             onError={() => setBroken((list) => (list.includes(src) ? list : [...list, src]))}
           />
         ))}
       </div>
+      {/* WHY: dégradé limité au bas de la photo, pour lire les points et le bouton sans assombrir le bien. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#2D2420]/55 to-transparent" aria-hidden="true" />
+      {topLeft && <div className="absolute left-4 top-4">{topLeft}</div>}
       {shown.length > 1 && (
         <>
-          <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2.5 py-1 text-xs font-bold text-white" aria-hidden="true">
+          <span className="absolute right-4 top-4 rounded-full bg-[#2D2420]/70 px-2.5 py-1 text-xs font-bold text-[#FAF8F5] backdrop-blur-sm" aria-hidden="true">
             {Math.min(index, shown.length - 1) + 1} / {shown.length}
           </span>
-          <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1.5" aria-hidden="true">
+          <div className="absolute bottom-[30px] left-4 flex gap-1.5" aria-hidden="true">
             {shown.map((src, i) => (
-              <span key={src} className={`h-2 w-2 rounded-full ${i === index ? "bg-white" : "bg-white/50"} shadow`} />
+              <span key={src} className={`h-1.5 w-1.5 rounded-full ${i === index ? "bg-[#FAF8F5]" : "bg-[#FAF8F5]/50"}`} />
             ))}
           </div>
         </>
       )}
+      {bottomRight && <div className="absolute bottom-4 right-4">{bottomRight}</div>}
     </div>
   );
 }
@@ -225,14 +240,14 @@ const CONTACTS_KEY = "mca-contacts";
 /** Clé de la mémoire locale : annonces dont la relance « Où en êtes-vous ? » est close (id → date). */
 const FOLLOWUPS_DONE_KEY = "mca-relances-closes";
 
-/** Couleurs reconnaissables de chaque plateforme (sans imiter leurs logos). */
+/** Bouton vers l'annonce d'origine, posé sur la photo : couleur de la plateforme (sans imiter son logo). */
 const SOURCE_STYLE: Record<ClientAnnonce["source"], { label: string; className: string }> = {
-  facebook: { label: "Voir l'annonce sur Facebook", className: "bg-[#1877F2] hover:bg-[#166FE5] text-white" },
-  tiktok: { label: "Voir la vidéo TikTok", className: "bg-[#010101] hover:bg-[#262626] text-white" },
+  facebook: { label: "Voir l'annonce", className: "bg-[#1877F2] hover:bg-[#166FE5] text-white" },
+  tiktok: { label: "Voir la vidéo", className: "bg-[#2D2420]/75 hover:bg-[#2D2420]/90 text-[#FAF8F5]" },
 };
-// WHY: texte encre sur le vert vif — le blanc sur #22C55E est illisible en plein soleil.
-const WHATSAPP_CLASS = "bg-[#22C55E] hover:bg-[#1FB455] text-[#14241B]";
-const ACTION_BASE = "inline-flex w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-bold";
+// Palette de la carte d'annonce (beige et olive) : surface #FAF8F5, encre #2D2420, olive #4A6741.
+const CARD_FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FAF8F5] disabled:opacity-50 disabled:pointer-events-none";
+const CHOICE_BASE = `${CARD_FOCUS} inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full px-4 py-2 text-center text-[13px] font-semibold transition-[background-color,transform] duration-200 active:scale-[.98] motion-reduce:transition-none`;
 
 /** Lit un objet JSON de la mémoire locale ; vide si indisponible ou illisible. */
 function readStore(key: string): Record<string, number> {
@@ -278,9 +293,14 @@ const tabOf = (a: ClientAnnonce): Tab => (a.status === "new" && a.doubts?.length
 const TABS: { key: Tab; label: string }[] = [
   { key: "new", label: "Pour vous" },
   { key: "check", label: "À vérifier" },
-  { key: "kept", label: "Intéressantes" },
-  { key: "removed", label: "Écartées" },
+  { key: "kept", label: "Mes annonces · gardées" },
+  { key: "removed", label: "Mes annonces · écartées" },
 ];
+
+/** « Mes annonces » regroupe les annonces déjà triées : gardées, ou écartées (sélecteur). */
+const isMine = (t: Tab) => t === "kept" || t === "removed";
+// WHY: les trois onglets tiennent sur une ligne dès 360 px ; au-delà, ils se partagent la largeur.
+const TAB_CLASS = "min-h-[40px] flex-auto whitespace-nowrap px-2.5 text-[13px]";
 
 /** Espace personnel d'un client : ses annonces, à contacter et à trier. */
 export default function ClientSpacePage(props: { params: Promise<{ token: string }> }) {
@@ -387,6 +407,14 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     if (state === "ready" && !onboardingSeen()) setShowTour(true);
   }, [state]);
 
+  // Dernière annonce écartée : la bulle « Annonce écartée » propose de l'annuler pendant 6 s.
+  const [undo, setUndo] = useState<string | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), 6000);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
   // Rappels montrés une seule fois sur ce téléphone, au bon moment.
   const [hint, setHint] = useState<string | null>(null);
   const hintOnce = useCallback((key: string, text: string) => {
@@ -427,7 +455,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     setBusy(annonceId);
     setReasonFor(null);
     const next: ClientStatus = action === "keep" ? "kept" : action === "remove" ? "removed" : "new";
-    if (action === "remove") hintOnce("mca-astuce-ecart", "Merci 🙏🏾 ! Vos prochaines annonces tiendront compte de votre avis.");
+    setUndo(action === "remove" ? annonceId : null);
     const previous = space;
     // Mise à jour immédiate à l'écran, annulée si l'enregistrement échoue.
     setSpace({ ...space, annonces: space.annonces.map((a) => (a.id === annonceId ? { ...a, status: next, feedback: action === "reset" ? null : feedback ?? null } : a)) });
@@ -616,7 +644,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   }
 
   return (
-    <div className={`theme-light ${font.className} min-h-screen px-4 py-6`}>
+    <div className={`theme-light ${font.className} min-h-screen bg-[#F0EFED] px-4 py-6`}>
       <ClientOnboarding open={showTour} onClose={() => setShowTour(false)} />
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
@@ -753,13 +781,33 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2" role="tablist">
-          {TABS.map((t) => (
-            <Button key={t.key} role="tab" aria-selected={tab === t.key} variant={tab === t.key ? "default" : "outline"} size="sm" onClick={() => setTab(t.key)}>
-              {t.label} ({counts[t.key]})
+        {/* À trier (« Pour vous », « À vérifier ») puis déjà trié (« Mes annonces »). */}
+        <div className="flex flex-wrap gap-1.5" role="tablist">
+          {([["new", "Pour vous", counts.new], ["check", "À vérifier", counts.check]] as const).map(([key, label, count]) => (
+            <Button key={key} role="tab" aria-selected={tab === key} variant={tab === key ? "default" : "outline"} size="sm" className={TAB_CLASS} onClick={() => setTab(key)}>
+              {label} ({count})
             </Button>
           ))}
+          <Button role="tab" aria-selected={isMine(tab)} variant={isMine(tab) ? "default" : "outline"} size="sm" className={TAB_CLASS} onClick={() => { if (!isMine(tab)) setTab("kept"); }}>
+            Mes annonces ({counts.kept})
+          </Button>
         </div>
+
+        {isMine(tab) && (
+          <div className="inline-flex rounded-full border border-border bg-card p-1" role="group" aria-label="Annonces à afficher">
+            {([["kept", "Gardées"], ["removed", "Écartées"]] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={tab === key}
+                onClick={() => setTab(key)}
+                className={`min-h-[40px] rounded-full px-4 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${tab === key ? "bg-[#2D2420] text-[#FAF8F5]" : "text-muted-foreground hover:bg-muted"}`}
+              >
+                {label} ({counts[key]})
+              </button>
+            ))}
+          </div>
+        )}
 
         {hint && (
           <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary" role="status">
@@ -828,148 +876,193 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                   ? "Aucune annonce à vérifier. Ici arrivent les annonces qui correspondent à votre recherche mais à qui il manque une information, comme le prix."
                 : tab === "kept"
                   ? "Aucune annonce gardée pour l'instant. Appuyez sur « Ça m'intéresse » pour la retrouver ici."
-                  : "Aucune annonce écartée."}
+                  : "Aucune annonce écartée. Celles que vous mettez de côté avec « Pas pour moi » arrivent ici."}
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {visible.map((a) => (
-              <Card key={a.id} id={`annonce-${a.id}`} className="overflow-hidden scroll-mt-4">
-                <PhotoGallery photos={a.images?.length ? a.images : a.image ? [a.image] : []} />
-                <CardContent className="p-4 space-y-3">
-                  {a.withdrawn && (
-                    <p className="flex items-start gap-2 rounded-lg border border-destructive bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
-                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
-                      <span>{a.withdrawn}</span>
-                    </p>
-                  )}
-                  {!!a.doubts?.length && (
-                    <p className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
-                      <span>{a.doubts.join(" · ")} — à vérifier auprès de l&apos;annonceur.</span>
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {isNew(a) && <Badge className="bg-amber-400 text-black border-amber-500"><Sparkles className="h-3 w-3 mr-1" aria-hidden="true" />Nouvelle annonce</Badge>}
-                    {a.typeOffre && <Badge>{getTypeOffreLabel(a.typeOffre)}</Badge>}
-                    {a.typeBien && <Badge variant="outline">{getTypeBienLabel(a.typeBien)}</Badge>}
-                    {a.meuble && <Badge variant="outline">Meublé</Badge>}
-                  </div>
-
-                  {a.prix ? <p className="text-2xl font-bold text-primary">{formatPrice(a.prix, a.devise || "FCFA")}</p> : <p className="text-sm text-muted-foreground">Prix non indiqué</p>}
-
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    {[a.quartier, a.ville].filter(Boolean).join(", ") || "Lieu non précisé"}
-                    {a.chambres ? ` · ${a.chambres} ch.` : ""}
-                  </p>
-
-                  {a.resume && <p className="text-sm">{a.resume}</p>}
-                  {a.publishedAt && <p className="text-xs text-muted-foreground">Publiée le {formatDate(a.publishedAt)}</p>}
-
-                  {(() => {
-                    const toSort = a.status === "new";
-                    const source = SOURCE_STYLE[a.source] ?? SOURCE_STYLE.facebook;
-                    const hasDirect = !!(a.whatsapp || a.telephone);
-                    const contacted = !!contacts[a.id];
-                    const askFollowup = toSort && contacted && !followupsDone[a.id];
-                    const step = (n: number, text: string) =>
-                      toSort ? (
-                        <p className="flex items-center gap-2 text-sm font-bold">
-                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#137638] text-xs text-white" aria-hidden="true">{n}</span>
-                          {text}
-                        </p>
-                      ) : null;
-                    let n = 0;
-                    return (
-                      <div className="pt-3 border-t border-border space-y-3">
-                        {askFollowup && (
-                          <div className="space-y-2 rounded-lg border border-[#137638]/40 bg-[#F5F8F6] p-3" role="group" aria-label="Suivi du contact">
-                            <p className="text-sm font-bold">Vous avez contacté l&apos;annonceur. Où en êtes-vous ?</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <Button className="min-h-[48px] h-auto whitespace-normal bg-[#137638] hover:bg-[#0F5F2D] text-white" onClick={() => { closeFollowup(a.id); act(a.id, "keep", "pertinente"); hintOnce("mca-astuce-visite", "Bonne visite ! L'annonce vous attend dans « Intéressantes »."); }} disabled={busy === a.id}>
-                                <Check className="h-4 w-4 mr-1" /> Visite prévue
-                              </Button>
-                              <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => { closeFollowup(a.id); setHint(a.telephone ? "Pas de réponse ? Essayez d'appeler : les annonceurs répondent souvent plus vite au téléphone." : "Pas de réponse ? Relancez demain matin, c'est souvent le meilleur moment."); }}>
-                                Pas de réponse
-                              </Button>
-                            </div>
-                            <Button variant="outline" className="w-full min-h-[44px]" onClick={() => { closeFollowup(a.id); act(a.id, "remove", "indisponible"); }} disabled={busy === a.id}>
-                              Déjà loué ou vendu
-                            </Button>
-                          </div>
-                        )}
-
-                        {a.postUrl && (
-                          <div className="space-y-2">
-                            {step(++n, hasDirect ? "Regardez l'annonce" : "Regardez l'annonce et contactez l'annonceur")}
-                            <a href={a.postUrl} target="_blank" rel="noopener noreferrer" className={`${ACTION_BASE} min-h-[48px] ${source.className}`} onClick={() => !hasDirect && markContacted(a.id)}>
-                              <ExternalLink className="h-4 w-4" aria-hidden="true" /> {source.label}
-                            </a>
-                          </div>
-                        )}
-
-                        {hasDirect && (
-                          <div className="space-y-2">
-                            {step(++n, a.doubts?.length ? "Confirmez l'info manquante" : "Demandez si c'est libre")}
-                            {a.whatsapp ? (
-                              <a href={`https://wa.me/${a.whatsapp}?text=${encodeURIComponent(contactMessage(a))}`} target="_blank" rel="noopener noreferrer" className={`${ACTION_BASE} min-h-[52px] text-base ${WHATSAPP_CLASS}`} onClick={() => markContacted(a.id)}>
-                                <MessageCircle className="h-5 w-5" aria-hidden="true" /> {contacted ? "Relancer sur WhatsApp" : "Demander une visite"}
-                              </a>
-                            ) : (
-                              <a href={`tel:+${a.telephone}`} className={`${ACTION_BASE} min-h-[52px] text-base ${WHATSAPP_CLASS}`} onClick={() => markContacted(a.id)}>
-                                <Phone className="h-5 w-5" aria-hidden="true" /> Appeler l&apos;annonceur
-                              </a>
-                            )}
-                            {a.whatsapp && a.telephone && (
-                              <a href={`tel:+${a.telephone}`} className={`${ACTION_BASE} min-h-[44px] border border-[#137638] text-[#137638] hover:bg-[#137638]/5`} onClick={() => markContacted(a.id)}>
-                                <Phone className="h-4 w-4" aria-hidden="true" /> Ou appeler
-                              </a>
-                            )}
-                            {toSort && a.whatsapp && !contacted && <p className="text-xs text-muted-foreground">Le message est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer.</p>}
-                          </div>
-                        )}
-
-                        {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] && (
-                          <p className="text-sm text-muted-foreground">Votre avis : {FEEDBACK_LABELS[a.feedback]}</p>
-                        )}
-
-                        {!toSort ? (
-                          <Button variant="outline" className="w-full min-h-[48px]" onClick={() => act(a.id, "reset")} disabled={busy === a.id}>
-                            <RotateCcw className="h-4 w-4 mr-1" /> {a.status === "kept" ? "Remettre dans Pour vous" : "Restaurer"}
-                          </Button>
-                        ) : reasonFor === a.id ? (
-                          <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
-                            <p className="text-sm font-bold">Qu&apos;est-ce qui ne va pas ?</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {REFUSAL_REASONS.map((reason) => (
-                                <Button key={reason.id} variant="outline" className="min-h-[48px] h-auto whitespace-normal" onClick={() => act(a.id, "remove", reason.id)} disabled={busy === a.id}>
-                                  {reason.id === "arnaque" && <Flag className="h-4 w-4 mr-1" />}
-                                  {reason.label}
-                                </Button>
-                              ))}
-                            </div>
-                            <Button variant="ghost" className="w-full min-h-[44px]" onClick={() => setReasonFor(null)}>Annuler</Button>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {step(++n, "Votre choix")}
-                            <div className="grid grid-cols-2 gap-2">
-                              <Button className="min-h-[48px] h-auto whitespace-normal bg-[#137638] hover:bg-[#0F5F2D] text-white" onClick={() => act(a.id, "keep", "pertinente")} disabled={busy === a.id}>
-                                <Heart className="h-4 w-4 mr-1" /> Ça m&apos;intéresse
-                              </Button>
-                              <Button variant="outline" className="min-h-[48px] h-auto whitespace-normal bg-[#EEF2EF] border-transparent text-[#14241B] hover:bg-[#E2E8E4]" onClick={() => setReasonFor(a.id)} disabled={busy === a.id}>
-                                <X className="h-4 w-4 mr-1" /> Pas pour moi
-                              </Button>
-                            </div>
-                          </div>
+          <div className="space-y-5">
+            {visible.map((a) => {
+              const toSort = a.status === "new";
+              const contacted = !!contacts[a.id];
+              const askFollowup = toSort && contacted && !followupsDone[a.id];
+              const action = primaryAction(a, contacted);
+              const price = cardPrice(a);
+              const doubts = otherDoubts(a);
+              const description = cardDescription(a);
+              const published = publishedLabel(a.publishedAt);
+              const meta = cardMeta(a);
+              const source = SOURCE_STYLE[a.source] ?? SOURCE_STYLE.facebook;
+              const SourceIcon = a.source === "tiktok" ? Play : ExternalLink;
+              // Sans contact direct, l'annonce d'origine devient l'action principale : pas de doublon sur la photo.
+              const sourceLink = a.postUrl && action.kind !== "source" ? a.postUrl : null;
+              const newBadge = isNew(a) ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FAF8F5] px-3 py-1.5 text-xs font-bold text-[#995C00] shadow-sm">
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Nouvelle annonce
+                </span>
+              ) : null;
+              const onPhotoSource = sourceLink ? (
+                <a href={sourceLink} target="_blank" rel="noopener noreferrer" className={`${CARD_FOCUS} inline-flex min-h-[44px] items-center gap-2 rounded-full px-4 text-[13px] font-semibold backdrop-blur-md transition-[background-color,transform] duration-200 active:scale-[.98] motion-reduce:transition-none ${source.className}`}>
+                  <SourceIcon className="h-4 w-4" aria-hidden="true" /> {source.label}
+                </a>
+              ) : null;
+              const primaryClass = `${CARD_FOCUS} inline-flex w-full min-h-[54px] items-center justify-center gap-2 rounded-full bg-[#4A6741] px-5 py-3 text-center text-[15px] font-semibold text-[#FAF8F5] transition-[background-color,transform] duration-200 hover:bg-[#3A5533] active:scale-[.98] motion-reduce:transition-none`;
+              return (
+                <article key={a.id} id={`annonce-${a.id}`} className="mx-auto w-full max-w-[446px] scroll-mt-4 overflow-hidden rounded-[24px] border border-[#E1DCD5] bg-[#FAF8F5] text-[#2D2420] shadow-[0_18px_55px_rgba(45,36,32,.09),0_2px_8px_rgba(45,36,32,.04)]">
+                  <PhotoGallery
+                    photos={a.images?.length ? a.images : a.image ? [a.image] : []}
+                    label={cardPhotoLabel(a)}
+                    topLeft={newBadge}
+                    bottomRight={onPhotoSource}
+                    empty={newBadge || sourceLink ? (
+                      <div className="flex flex-wrap items-center gap-2 px-[22px] pt-[22px] max-[374px]:px-[18px] max-[374px]:pt-[18px]">
+                        {newBadge}
+                        {sourceLink && (
+                          <a href={sourceLink} target="_blank" rel="noopener noreferrer" className={`${CARD_FOCUS} inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition-[background-color,transform] duration-200 active:scale-[.98] motion-reduce:transition-none ${source.className}`}>
+                            <SourceIcon className="h-4 w-4" aria-hidden="true" /> {source.label}
+                          </a>
                         )}
                       </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            ))}
+                    ) : null}
+                  />
+
+                  <div className="space-y-5 p-[22px] max-[374px]:p-[18px]">
+                    {a.withdrawn && (
+                      <p className="flex items-start gap-2 rounded-2xl border border-destructive bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span>{a.withdrawn}</span>
+                      </p>
+                    )}
+
+                    <div>
+                      {meta.length > 0 && <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#4A6741]">{meta.join(" · ")}</p>}
+                      <h2 className="mt-2 text-[clamp(23px,6.4vw,27px)] font-semibold leading-[1.18] tracking-[-0.035em]">{cardTitle(a)}</h2>
+                      <p className="mt-2 flex items-center gap-1.5 text-sm text-[#6B615B]">
+                        <MapPin className="h-4 w-4 shrink-0" aria-hidden="true" /> {cardPlace(a)}
+                      </p>
+                      {description && <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-[#6B615B]">{description}</p>}
+                    </div>
+
+                    <div className="border-t border-[#E1DCD5] pt-4">
+                      {price ? (
+                        <p className="text-[22px] font-bold tracking-[-0.02em]">{price}</p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[20px] font-semibold tracking-[-0.02em]">Prix à confirmer</p>
+                            <span className="shrink-0 rounded-full bg-[#F6EBDA] px-2.5 py-1 text-xs font-bold text-[#995C00]">À vérifier</span>
+                          </div>
+                          <p className="mt-1 text-xs text-[#6B615B]">Le prix n&apos;a pas été indiqué par l&apos;annonceur.</p>
+                        </>
+                      )}
+                      {doubts.length > 0 && (
+                        <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-[#995C00]">
+                          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" /> À vérifier : {doubts.join(" · ").toLowerCase()}
+                        </p>
+                      )}
+                    </div>
+
+                    {askFollowup && (
+                      <div className="space-y-2 rounded-2xl bg-[#E5ECDF] p-4" role="group" aria-label="Suivi du contact">
+                        <p className="text-sm font-semibold">Vous avez contacté l&apos;annonceur. Où en êtes-vous ?</p>
+                        <div className="grid grid-cols-2 gap-2 max-[359px]:grid-cols-1">
+                          <button type="button" className={`${CHOICE_BASE} bg-[#4A6741] text-[#FAF8F5] hover:bg-[#3A5533]`} onClick={() => { closeFollowup(a.id); act(a.id, "keep", "pertinente"); hintOnce("mca-astuce-visite", "Bonne visite ! L'annonce vous attend dans « Mes annonces »."); }} disabled={busy === a.id}>
+                            <Check className="h-4 w-4" aria-hidden="true" /> Visite prévue
+                          </button>
+                          <button type="button" className={`${CHOICE_BASE} border border-[#E1DCD5] bg-[#FAF8F5] text-[#2D2420] hover:bg-[#F0EFED]`} onClick={() => { closeFollowup(a.id); setHint(a.telephone ? "Pas de réponse ? Essayez d'appeler : les annonceurs répondent souvent plus vite au téléphone." : "Pas de réponse ? Relancez demain matin, c'est souvent le meilleur moment."); }}>
+                            Pas de réponse
+                          </button>
+                        </div>
+                        <button type="button" className={`${CHOICE_BASE} w-full border border-[#E1DCD5] bg-[#FAF8F5] text-[#2D2420] hover:bg-[#F0EFED]`} onClick={() => { closeFollowup(a.id); act(a.id, "remove", "indisponible"); }} disabled={busy === a.id}>
+                          Déjà loué ou vendu
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      {action.kind === "whatsapp" && a.whatsapp ? (
+                        <a href={`https://wa.me/${a.whatsapp}?text=${encodeURIComponent(contactMessage(a))}`} target="_blank" rel="noopener noreferrer" className={primaryClass} onClick={() => markContacted(a.id)}>
+                          <MessageCircle className="h-5 w-5 shrink-0" aria-hidden="true" /> {action.label}
+                        </a>
+                      ) : action.kind === "call" && a.telephone ? (
+                        <a href={`tel:+${a.telephone}`} className={primaryClass} onClick={() => markContacted(a.id)}>
+                          <Phone className="h-5 w-5 shrink-0" aria-hidden="true" /> {action.label}
+                        </a>
+                      ) : a.postUrl ? (
+                        <a href={a.postUrl} target="_blank" rel="noopener noreferrer" className={primaryClass} onClick={() => markContacted(a.id)}>
+                          <SourceIcon className="h-5 w-5 shrink-0" aria-hidden="true" /> {action.label}
+                        </a>
+                      ) : null}
+                      {action.kind === "whatsapp" && a.telephone && (
+                        <a href={`tel:+${a.telephone}`} className={`${CARD_FOCUS} inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full text-sm font-semibold text-[#4A6741] transition-colors duration-200 hover:bg-[#E5ECDF] motion-reduce:transition-none`} onClick={() => markContacted(a.id)}>
+                          <Phone className="h-4 w-4" aria-hidden="true" /> Ou appeler
+                        </a>
+                      )}
+                      {toSort && action.kind === "whatsapp" && !contacted && (
+                        <p className="text-center text-xs text-[#6B615B]">Le message est déjà écrit : vous n&apos;avez qu&apos;à l&apos;envoyer.</p>
+                      )}
+                    </div>
+
+                    {published && <p className="text-center text-xs text-[#6B615B]">{published}</p>}
+
+                    <div className="space-y-3 border-t border-[#E1DCD5] pt-4">
+                      {reasonFor === a.id ? (
+                        <div className="space-y-2" role="group" aria-label="Pourquoi cette annonce ne convient pas">
+                          <p className="text-sm font-semibold">Qu&apos;est-ce qui ne va pas ?</p>
+                          <div className="grid grid-cols-2 gap-2 max-[359px]:grid-cols-1">
+                            {REFUSAL_REASONS.map((reason) => (
+                              <button key={reason.id} type="button" className={`${CHOICE_BASE} border border-[#E1DCD5] bg-[#FAF8F5] text-[#2D2420] hover:bg-[#F0EFED]`} onClick={() => act(a.id, "remove", reason.id)} disabled={busy === a.id}>
+                                {reason.id === "arnaque" && <Flag className="h-4 w-4" aria-hidden="true" />}
+                                {reason.label}
+                              </button>
+                            ))}
+                          </div>
+                          <button type="button" className={`${CHOICE_BASE} w-full text-[#6B615B] hover:bg-[#F0EFED]`} onClick={() => setReasonFor(null)}>Annuler</button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-[#6B615B]">Votre choix</p>
+                          <div className="grid grid-cols-2 gap-2 max-[359px]:grid-cols-1">
+                            <button
+                              type="button"
+                              aria-pressed={a.status === "kept"}
+                              className={`${CHOICE_BASE} ${a.status === "kept" ? "bg-[#4A6741] text-[#FAF8F5] hover:bg-[#3A5533]" : "bg-[#E5ECDF] text-[#3E5937] hover:bg-[#D8E3D0]"}`}
+                              onClick={() => (a.status === "kept" ? act(a.id, "reset") : act(a.id, "keep", "pertinente"))}
+                              disabled={busy === a.id}
+                            >
+                              <Heart className={`h-4 w-4 ${a.status === "kept" ? "fill-current" : ""}`} aria-hidden="true" /> Ça m&apos;intéresse
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={a.status === "removed"}
+                              className={`${CHOICE_BASE} ${a.status === "removed" ? "bg-[#2D2420] text-[#FAF8F5] hover:bg-[#3D322D]" : "border border-[#E1DCD5] text-[#6B615B] hover:bg-[#F0EFED]"}`}
+                              onClick={() => (a.status === "removed" ? act(a.id, "reset") : setReasonFor(a.id))}
+                              disabled={busy === a.id}
+                            >
+                              <X className="h-4 w-4" aria-hidden="true" /> Pas pour moi
+                            </button>
+                          </div>
+                          {!toSort && (
+                            <p className="text-xs text-[#6B615B]">
+                              {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] ? `Votre avis : ${FEEDBACK_LABELS[a.feedback]}. ` : ""}
+                              Appuyez de nouveau sur votre choix pour remettre l&apos;annonce dans « Pour vous ».
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {undo && (
+          <div className="fixed inset-x-4 bottom-4 z-[1000] mx-auto flex max-w-[446px] items-center gap-3 rounded-full bg-[#2D2420] py-2 pl-5 pr-2 text-sm text-[#FAF8F5] shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2" role="status">
+            <p className="flex-1">Annonce écartée. Vos prochaines annonces en tiendront compte.</p>
+            <button type="button" className="min-h-[44px] rounded-full px-4 font-bold text-[#E5ECDF] hover:bg-[#FAF8F5]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5ECDF]" onClick={() => { const id = undo; setUndo(null); act(id, "reset"); }}>
+              Annuler
+            </button>
           </div>
         )}
 
