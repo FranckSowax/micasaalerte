@@ -7,7 +7,7 @@ import { Nunito_Sans } from "next/font/google";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Check, Copy, ExternalLink, Flag, Heart, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, Play, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
+import { AlertTriangle, BellOff, Check, Copy, ExternalLink, Flag, Heart, Home, HelpCircle, Loader2, LogOut, MapPin, MessageCircle, Phone, Play, Trash2, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react";
 import { criteriaError, CriteriaFields, criteriaPayload, EMPTY_CRITERIA, exigencesAreStrict, MAX_RADIUS_KM, MIN_RADIUS_KM, parseExigences, type CriteriaValue } from "@/components/criteria-form";
 import { Map, type MapMarker } from "@/components/map";
 import { ZONE_COLOR } from "@/lib/map-format";
@@ -137,6 +137,15 @@ function Countdown({ endsAt, label, onEnd }: { endsAt: string; label: string; on
 
 type ClientStatus = "new" | "kept" | "removed";
 
+/** Dernière action annulable depuis la bulle : un écart, ou une suppression (l'annonce est gardée pour la remettre). */
+type Undo = { kind: "removed"; id: string } | { kind: "deleted"; annonce: ClientAnnonce; index: number };
+
+/** Remet un élément à sa place d'origine dans une liste. */
+function insertAt<T>(list: T[], item: T, index: number): T[] {
+  const i = index < 0 ? list.length : Math.min(index, list.length);
+  return [...list.slice(0, i), item, ...list.slice(i)];
+}
+
 /** Onglets : « check » regroupe les annonces à trier auxquelles il manque une information. */
 type Tab = ClientStatus | "check";
 
@@ -216,6 +225,8 @@ function toCriteriaValue(c: Criteria | undefined): CriteriaValue {
 
 interface ClientSpace {
   clientName: string | null;
+  /** Faux quand les envois sont arrêtés (par l'abonné ou par l'agent). */
+  sending?: boolean;
   subscription?: Subscription;
   criteria?: Criteria;
   zones: { lat: number; lon: number; radiusKm: number; label: string }[];
@@ -297,6 +308,9 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "removed", label: "Mes annonces · écartées" },
 ];
 
+/** Ombre douce des panneaux (abonnement, critères), la même que les cartes d'annonce. */
+const PANEL_SHADOW = "shadow-[0_18px_55px_rgba(45,36,32,.07),0_2px_8px_rgba(45,36,32,.04)]";
+
 /** « Mes annonces » regroupe les annonces déjà triées : gardées, ou écartées (sélecteur). */
 const isMine = (t: Tab) => t === "kept" || t === "removed";
 // WHY: les trois onglets tiennent sur une ligne dès 360 px ; au-delà, ils se partagent la largeur.
@@ -313,7 +327,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   const [tab, setTab] = useState<Tab>("new");
   const [busy, setBusy] = useState<string | null>(null);
   const [relink, setRelink] = useState<"idle" | "sending" | "sent" | "limited">("idle");
-  const [panel, setPanel] = useState<"none" | "criteria" | "payment">("none");
+  const [panel, setPanel] = useState<"none" | "criteria" | "payment" | "stop">("none");
   const [criteria, setCriteria] = useState<CriteriaValue>(EMPTY_CRITERIA);
   const [plan, setPlan] = useState("day");
   const [copied, setCopied] = useState(false);
@@ -412,7 +426,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   }, [state]);
 
   // Dernière annonce écartée : la bulle « Annonce écartée » propose de l'annuler pendant 6 s.
-  const [undo, setUndo] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Undo | null>(null);
   useEffect(() => {
     if (!undo) return;
     const timer = setTimeout(() => setUndo(null), 6000);
@@ -459,7 +473,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     setBusy(annonceId);
     setReasonFor(null);
     const next: ClientStatus = action === "keep" ? "kept" : action === "remove" ? "removed" : "new";
-    setUndo(action === "remove" ? annonceId : null);
+    setUndo(action === "remove" ? { kind: "removed", id: annonceId } : null);
     const previous = space;
     // Mise à jour immédiate à l'écran, annulée si l'enregistrement échoue.
     setSpace({ ...space, annonces: space.annonces.map((a) => (a.id === annonceId ? { ...a, status: next, feedback: action === "reset" ? null : feedback ?? null } : a)) });
@@ -474,6 +488,47 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
       setSpace(previous);
     }
     setBusy(null);
+  };
+
+  /** Supprime une annonce écartée : elle disparaît de l'espace (sans être renvoyée), « Annuler » la remet. */
+  const deleteAnnonce = async (annonce: ClientAnnonce) => {
+    if (!space) return;
+    const index = space.annonces.findIndex((x) => x.id === annonce.id);
+    setBusy(annonce.id);
+    setUndo({ kind: "deleted", annonce, index });
+    setSpace((s) => (s ? { ...s, annonces: s.annonces.filter((x) => x.id !== annonce.id) } : s));
+    const ok = await postAction(annonce.id, "delete");
+    if (!ok) {
+      setUndo(null);
+      setSpace((s) => (s ? { ...s, annonces: insertAt(s.annonces, annonce, index) } : s));
+      setHint("Suppression impossible pour le moment. Réessayez.");
+    }
+    setBusy(null);
+  };
+
+  /** « Annuler » après une suppression : l'annonce revient dans « Écartées », avec l'avis donné. */
+  const undoDelete = async (u: Extract<Undo, { kind: "deleted" }>) => {
+    setUndo(null);
+    const restored = { ...u.annonce, status: "removed" as const };
+    setSpace((s) => (s ? { ...s, annonces: insertAt(s.annonces, restored, u.index) } : s));
+    const feedback = u.annonce.feedback && u.annonce.feedback !== "pertinente" ? u.annonce.feedback : undefined;
+    if (!(await postAction(u.annonce.id, "remove", feedback))) {
+      setSpace((s) => (s ? { ...s, annonces: s.annonces.filter((x) => x.id !== u.annonce.id) } : s));
+      setHint("Impossible de remettre l'annonce pour le moment.");
+    }
+  };
+
+  const postAction = async (annonceId: string, action: "remove" | "delete", feedback?: string) => {
+    try {
+      const res = await fetch(`/api/client/${params.token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annonceId, action, ...(feedback ? { feedback } : {}) }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   };
 
   const openCriteria = () => {
@@ -541,6 +596,26 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
     setSaving(false);
   };
 
+  /** « Arrêter les envois » : plus d'annonces ni de WhatsApp ; seul l'agent peut relancer. */
+  const stopSending = async () => {
+    setSaving(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/client/${params.token}/stop`, { method: "POST" });
+      if (res.ok) {
+        setPanel("none");
+        setSpace((s) => (s ? { ...s, sending: false } : s));
+        setNotice({ ok: true, text: "Envois arrêtés. Vous ne recevrez plus de messages WhatsApp. Vos annonces restent ici." });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setNotice({ ok: false, text: data.error || "Impossible d'arrêter les envois pour le moment." });
+      }
+    } catch {
+      setNotice({ ok: false, text: "Connexion impossible. Réessayez." });
+    }
+    setSaving(false);
+  };
+
   const askNewLink = async () => {
     setRelink("sending");
     try {
@@ -597,7 +672,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
   if (state === "loading") {
     return (
-      <div className={`theme-light ${font.className} min-h-screen flex items-center justify-center`}>
+      <div className={`theme-light theme-olive ${font.className} min-h-screen flex items-center justify-center`}>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -605,7 +680,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
   if (state !== "ready" || !space) {
     return (
-      <div className={`theme-light ${font.className} min-h-screen flex items-center justify-center px-4`}>
+      <div className={`theme-light theme-olive ${font.className} min-h-screen flex items-center justify-center px-4`}>
         <Card className="w-full max-w-md text-center">
           <CardContent className="p-8 space-y-4">
             <Home className="h-10 w-10 text-primary mx-auto" />
@@ -648,7 +723,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   }
 
   return (
-    <div className={`theme-light ${font.className} min-h-screen bg-[#F0EFED] px-4 py-6`}>
+    <div className={`theme-light theme-olive ${font.className} min-h-screen px-4 py-6`}>
       <ClientOnboarding open={showTour} onClose={() => setShowTour(false)} />
       <div className="max-w-3xl mx-auto space-y-5">
         <header className="flex items-center gap-2">
@@ -670,21 +745,26 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
           const chosen = plans.find((p) => p.id === plan) || plans[0];
           const price = `abonnement à partir de ${plans[0].price.toLocaleString("fr-FR")} FCFA`;
           const until = sub.endsAt ? formatDate(sub.endsAt) : null;
+          const stopped = space.sending === false;
           return (
-            <Card className={sub.status === "expired" ? "border-red-500/50" : ""}>
-              <CardContent className="p-4 space-y-3">
+            <Card className={`rounded-[24px] ${PANEL_SHADOW} ${sub.status === "expired" ? "border-red-500/50" : ""}`}>
+              <CardContent className="p-[18px] space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={sub.status === "expired" ? "bg-red-600 text-white" : sub.status === "trial" ? "bg-amber-500 text-black" : ""}>
-                    {sub.unlimited ? "Accès illimité" : sub.status === "trial" ? "Essai gratuit" : sub.status === "active" ? "Abonnement actif" : "Accès terminé"}
+                  <Badge className={`rounded-full ${stopped ? "bg-[#2D2420] text-[#FAF8F5] border-transparent" : sub.status === "expired" ? "bg-red-600 text-white" : sub.status === "trial" ? "bg-[#F6EBDA] text-[#995C00] border-transparent" : ""}`}>
+                    {stopped ? "Envois arrêtés" : sub.unlimited ? "Accès illimité" : sub.status === "trial" ? "Essai gratuit" : sub.status === "active" ? "Abonnement actif" : "Accès terminé"}
                   </Badge>
+                  {stopped ? (
+                    <p className="text-sm">Vous ne recevez plus de nouvelles annonces ni de messages WhatsApp. Pour les relancer, contactez Mi Casa.</p>
+                  ) : (
                   <p className="text-sm">
                     {sub.status === "trial" && until && `Jusqu'au ${until}. Ensuite : ${price}.`}
                     {sub.status === "active" && (sub.unlimited ? "Vous recevez les annonces, sans limite de durée." : until ? `Vous recevez les annonces jusqu'au ${until}.` : "Vous recevez les annonces.")}
                     {sub.status === "expired" && `Vous ne recevez plus de nouvelles annonces. Renouvelez : ${price}.`}
                   </p>
+                  )}
                 </div>
 
-                {sub.status !== "expired" && sub.endsAt && (
+                {!stopped && sub.status !== "expired" && sub.endsAt && (
                   <Countdown
                     endsAt={sub.endsAt}
                     label={sub.status === "trial" ? "Essai gratuit : temps restant" : "Abonnement : temps restant"}
@@ -698,14 +778,36 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
                 <div className="flex flex-wrap gap-2">
                   {!sub.unlimited && (
-                    <Button size="sm" variant={sub.status === "expired" ? "default" : "outline"} onClick={() => { setNotice(null); setPanel(panel === "payment" ? "none" : "payment"); }}>
+                    <Button size="sm" className="rounded-full" variant={sub.status === "expired" ? "default" : "outline"} onClick={() => { setNotice(null); setPanel(panel === "payment" ? "none" : "payment"); }}>
                       <Wallet className="h-4 w-4 mr-1" /> {sub.status === "active" ? "Prolonger" : "S'abonner"}
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" onClick={openCriteria}>
+                  <Button size="sm" className="rounded-full" variant={panel === "criteria" ? "default" : "outline"} aria-expanded={panel === "criteria"} onClick={openCriteria}>
                     <SlidersHorizontal className="h-4 w-4 mr-1" /> Modifier mes critères
                   </Button>
                 </div>
+
+                {!stopped && panel !== "stop" && (
+                  <button type="button" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-1 text-xs font-semibold text-[#9A3B26] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setNotice(null); setPanel("stop"); }}>
+                    <BellOff className="h-3.5 w-3.5" aria-hidden="true" /> Arrêter les envois
+                  </button>
+                )}
+
+                {!stopped && panel === "stop" && (
+                  <div className="space-y-3 rounded-2xl border border-[#E9C9C0] bg-[#F7E9E4] p-4" role="group" aria-label="Arrêter les envois">
+                    <p className="text-sm font-semibold text-[#2D2420]">Arrêter les envois ?</p>
+                    <p className="text-sm text-[#6B615B]">
+                      Vous ne recevrez plus de nouvelles annonces ni de messages WhatsApp. Vos annonces restent dans votre espace.
+                      Pour relancer les envois, il faudra contacter Mi Casa.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 max-[359px]:grid-cols-1">
+                      <Button variant="outline" className="min-h-[48px] rounded-full" onClick={() => setPanel("none")} disabled={saving}>Annuler</Button>
+                      <Button className="min-h-[48px] rounded-full bg-[#9A3B26] text-white hover:bg-[#822F1E]" onClick={stopSending} disabled={saving}>
+                        {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <BellOff className="h-4 w-4 mr-1" />} Arrêter
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {panel === "payment" && (
                   <div className="space-y-3 pt-3 border-t border-border">
@@ -753,7 +855,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                         <p className="text-sm text-muted-foreground">
                           La référence est indispensable : sans elle, votre paiement ne peut pas être rattaché à votre abonnement. Un souci ? Appelez {sub.payment.name} au {sub.payment.contact}.
                         </p>
-                        <Button className="w-full min-h-[48px] bg-green-600 hover:bg-green-700 text-white" onClick={declarePayment} disabled={saving}>
+                        <Button className="w-full min-h-[48px] rounded-full" onClick={declarePayment} disabled={saving}>
                           {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />} J&apos;ai payé avec cette référence
                         </Button>
                       </>
@@ -773,12 +875,13 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
         {panel === "criteria" && (
           <div className="space-y-4">
+            <p className="px-1 text-[11px] font-bold uppercase tracking-[0.08em] text-primary">Mes critères</p>
             <CriteriaFields value={criteria} onChange={setCriteria} />
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => setPanel("none")} disabled={saving}>
+              <Button variant="outline" className="min-h-[48px] rounded-full" onClick={() => setPanel("none")} disabled={saving}>
                 <X className="h-4 w-4 mr-1" /> Annuler
               </Button>
-              <Button onClick={saveCriteria} disabled={saving}>
+              <Button className="min-h-[48px] rounded-full" onClick={saveCriteria} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />} Enregistrer
               </Button>
             </div>
@@ -1035,20 +1138,34 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
                             >
                               <Heart className={`h-4 w-4 ${a.status === "kept" ? "fill-current" : ""}`} aria-hidden="true" /> Ça m&apos;intéresse
                             </button>
-                            <button
-                              type="button"
-                              aria-pressed={a.status === "removed"}
-                              className={`${CHOICE_BASE} ${a.status === "removed" ? "bg-[#2D2420] text-[#FAF8F5] hover:bg-[#3D322D]" : "border border-[#E1DCD5] text-[#6B615B] hover:bg-[#F0EFED]"}`}
-                              onClick={() => (a.status === "removed" ? act(a.id, "reset") : setReasonFor(a.id))}
-                              disabled={busy === a.id}
-                            >
-                              <X className="h-4 w-4" aria-hidden="true" /> Pas pour moi
-                            </button>
+                            {a.status === "removed" ? (
+                              // Dans « Écartées », le second choix efface l'annonce de l'espace.
+                              <button
+                                type="button"
+                                className={`${CHOICE_BASE} border border-[#E9C9C0] text-[#9A3B26] hover:bg-[#F7E9E4]`}
+                                onClick={() => deleteAnnonce(a)}
+                                disabled={busy === a.id}
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" /> Supprimer
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-pressed={false}
+                                className={`${CHOICE_BASE} border border-[#E1DCD5] text-[#6B615B] hover:bg-[#F0EFED]`}
+                                onClick={() => setReasonFor(a.id)}
+                                disabled={busy === a.id}
+                              >
+                                <X className="h-4 w-4" aria-hidden="true" /> Pas pour moi
+                              </button>
+                            )}
                           </div>
                           {!toSort && (
                             <p className="text-xs text-[#6B615B]">
                               {a.status === "removed" && a.feedback && FEEDBACK_LABELS[a.feedback] ? `Votre avis : ${FEEDBACK_LABELS[a.feedback]}. ` : ""}
-                              Appuyez de nouveau sur votre choix pour remettre l&apos;annonce dans « Pour vous ».
+                              {a.status === "removed"
+                                ? "« Supprimer » l'efface de votre espace ; votre avis reste pris en compte."
+                                : "Appuyez de nouveau sur votre choix pour remettre l'annonce dans « Pour vous »."}
                             </p>
                           )}
                         </>
@@ -1063,8 +1180,8 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
 
         {undo && (
           <div className="fixed inset-x-4 bottom-4 z-[1000] mx-auto flex max-w-[446px] items-center gap-3 rounded-full bg-[#2D2420] py-2 pl-5 pr-2 text-sm text-[#FAF8F5] shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2" role="status">
-            <p className="flex-1">Annonce écartée. Vos prochaines annonces en tiendront compte.</p>
-            <button type="button" className="min-h-[44px] rounded-full px-4 font-bold text-[#E5ECDF] hover:bg-[#FAF8F5]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5ECDF]" onClick={() => { const id = undo; setUndo(null); act(id, "reset"); }}>
+            <p className="flex-1">{undo.kind === "deleted" ? "Annonce supprimée de votre espace." : "Annonce écartée. Vos prochaines annonces en tiendront compte."}</p>
+            <button type="button" className="min-h-[44px] rounded-full px-4 font-bold text-[#E5ECDF] hover:bg-[#FAF8F5]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5ECDF]" onClick={() => { if (undo.kind === "deleted") undoDelete(undo); else { setUndo(null); act(undo.id, "reset"); } }}>
               Annuler
             </button>
           </div>

@@ -40,7 +40,7 @@ interface SendItem {
   match: { score: number; minScore: number; eligible: boolean; blockedBy: string[]; missing: string[]; reasons: string[] };
 }
 
-const STATUS_LABELS: Record<string, string> = { new: "Pas encore triée", kept: "Jugée pertinente", removed: "Écartée par l'abonné" };
+const STATUS_LABELS: Record<string, string> = { new: "Pas encore triée", kept: "Jugée pertinente", removed: "Écartée par l'abonné", deleted: "Supprimée par l'abonné" };
 const FEEDBACK_LABELS: Record<string, string> = {
   pertinente: "pertinente",
   prix: "le prix ne convient pas",

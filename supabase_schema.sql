@@ -607,12 +607,16 @@ ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS client_feedback TEXT;
 -- Tri fait par le client sur chaque annonce reçue : à trier, retenue, supprimée
 ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS client_status TEXT DEFAULT 'new';
 ALTER TABLE client_demand_sends ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
-DO $$
-BEGIN
-    ALTER TABLE client_demand_sends
-        ADD CONSTRAINT client_demand_sends_client_status_check CHECK (client_status IN ('new', 'kept', 'removed'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- « deleted » : supprimée par l'abonné depuis « Écartées ». Elle disparaît de son espace mais la
+-- ligne reste (pas de renvoi, l'avis continue de compter). Contrainte recréée pour l'accepter.
+-- WHY: une seule instruction (un seul verrou) avec NOT VALID (pas de relecture de la table) : évite
+-- l'interblocage avec l'application en marche. lock_timeout abandonne au lieu d'attendre.
+SET lock_timeout = '5s';
+ALTER TABLE client_demand_sends
+    DROP CONSTRAINT IF EXISTS client_demand_sends_client_status_check,
+    ADD CONSTRAINT client_demand_sends_client_status_check
+        CHECK (client_status IN ('new', 'kept', 'removed', 'deleted')) NOT VALID;
+RESET lock_timeout;
 
 -- Plafond quotidien : les alertes sont désormais un lien vers l'espace client (un message
 -- par heure au plus), le plafond compte donc les annonces ajoutées, plus les messages.

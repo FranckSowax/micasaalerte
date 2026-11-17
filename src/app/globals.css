@@ -55,6 +55,31 @@
   }
 }
 
+/* Espace abonné (/c/[token]) : palette beige et olive, posée par-dessus .theme-light. Tous les
+   composants (cartes, boutons, badges, formulaire de critères) la prennent via les variables.
+   Encre #2D2420, surface #FAF8F5, fond #F0EFED, olive #4A6741, olive clair #E5ECDF. */
+@layer base {
+  .theme-light.theme-olive {
+    --background: 40 9% 94%;
+    --foreground: 18 17% 15%;
+    --card: 36 33% 97%;
+    --card-foreground: 18 17% 15%;
+    --popover: 36 33% 97%;
+    --popover-foreground: 18 17% 15%;
+    --primary: 106 23% 33%;
+    --primary-foreground: 36 33% 97%;
+    --secondary: 92 25% 90%;
+    --secondary-foreground: 18 17% 15%;
+    --muted: 40 9% 94%;
+    --muted-foreground: 22 8% 39%;
+    --accent: 92 25% 90%;
+    --accent-foreground: 18 17% 15%;
+    --border: 35 17% 86%;
+    --input: 35 14% 76%;
+    --ring: 106 23% 33%;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

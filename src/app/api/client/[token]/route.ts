@@ -1,4 +1,5 @@
 import { authorizeClient, withDeviceCookie } from "@/lib/client-auth";
+import { CLIENT_ACTIONS, decisionRow, isShownToClient, STATUS_BY_ACTION } from "@/lib/client-decision";
 import { isExpired } from "@/lib/annonce-lifetime";
 import { CRITERIA_FIELD_MESSAGES, CriteriaSchema, criteriaToRow } from "@/lib/demand-schema";
 import { DEFAULT_RADIUS_KM, locateAnnonce, locatePlace } from "@/lib/geo";
@@ -29,11 +30,9 @@ const FEEDBACK = ["pertinente", "prix", "quartier", "type", "equipement", "indis
 
 const ActionSchema = z.object({
   annonceId: z.string().uuid(),
-  action: z.enum(["keep", "remove", "reset"]),
+  action: z.enum(CLIENT_ACTIONS),
   feedback: z.enum(FEEDBACK).optional(),
 });
-
-const STATUS_BY_ACTION = { keep: "kept", remove: "removed", reset: "new" } as const;
 
 type Row = Record<string, unknown>;
 
@@ -72,6 +71,8 @@ export async function GET(request: Request, props: { params: Promise<{ token: st
     // Même calcul que pour l'envoi : critères actuels, ajustés par ce que les avis ont appris.
     const match = applyLearning(matchDemand(annonce as unknown as Annonce, demand as unknown as ClientDemand), annonce as unknown as Annonce, profile);
     const clientStatus = (send.client_status as string) || "new";
+    // Supprimée par l'abonné : elle n'apparaît plus, mais la ligne reste pour ne pas la renvoyer.
+    if (!isShownToClient(clientStatus)) continue;
     // Critères modifiés : une annonce encore « à trier » qui ne correspond plus n'est plus proposée.
     // Celles que l'abonné a retenues ou supprimées restent visibles : c'est son propre tri.
     // WHY: le secteur (localité, rayon) et les équipements ne sont pas des critères bloquants, ils
@@ -143,6 +144,8 @@ export async function GET(request: Request, props: { params: Promise<{ token: st
   return withDeviceCookie(
     NextResponse.json({
       clientName: demand.client_name,
+      // Envois arrêtés (par l'abonné ou l'agent) : plus d'annonces ni de messages WhatsApp.
+      sending: demand.is_active !== false,
       subscription: {
         status: state.status,
         endsAt: state.endsAt,
@@ -184,15 +187,17 @@ export async function POST(request: Request, props: { params: Promise<{ token: s
   const parsed = ActionSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Action invalide" }, { status: 400 });
 
-  const decision = { client_status: STATUS_BY_ACTION[parsed.data.action], decided_at: new Date().toISOString() };
-  // « Remettre à trier » efface l'avis ; sinon on enregistre celui qui accompagne la décision.
-  const feedback = parsed.data.action === "reset" ? null : (parsed.data.feedback ?? null);
-  const save = (row: Record<string, unknown>) =>
-    supabase.from("client_demand_sends").update(row).eq("demand_id", demand.id as string).eq("annonce_id", parsed.data.annonceId);
+  const row = decisionRow(parsed.data.action, parsed.data.feedback, new Date().toISOString());
+  const feedback = (row.client_feedback as string | null | undefined) ?? null;
+  const save = (values: Record<string, unknown>) =>
+    supabase.from("client_demand_sends").update(values).eq("demand_id", demand.id as string).eq("annonce_id", parsed.data.annonceId);
 
-  let { error } = await save({ ...decision, client_feedback: feedback });
+  let { error } = await save(row);
   // Colonne client_feedback absente (script SQL pas encore relancé) : la décision est enregistrée sans l'avis.
-  if (error) ({ error } = await save(decision));
+  if (error && "client_feedback" in row) {
+    const { client_feedback: _ignored, ...decision } = row;
+    ({ error } = await save(decision));
+  }
 
   if (error) {
     console.error("Client action failed:", error.message);

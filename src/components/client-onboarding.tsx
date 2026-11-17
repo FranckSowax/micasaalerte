@@ -61,7 +61,7 @@ const STEPS: { emoji: string; title: string; body: ReactNode }[] = [
       <ul className="space-y-3">
         <Line chip={<Chip tone="primary">Pour vous</Chip>}>Les annonces qui correspondent à vos critères.</Line>
         <Line chip={<Chip>À vérifier</Chip>}>Il manque une information, souvent le prix : appelez l&apos;annonceur pour la confirmer.</Line>
-        <Line chip={<Chip>Mes annonces</Chip>}>Celles que vous avez triées : « Gardées » ou « Écartées », au choix.</Line>
+        <Line chip={<Chip>Mes annonces</Chip>}>Celles que vous avez triées : « Gardées » ou « Écartées », au choix. Dans « Écartées », « Supprimer » efface l&apos;annonce.</Line>
         <Line chip={<Chip tone="amber" icon={<Sparkles className={icon} />}>Nouvelle annonce</Chip>}>Arrivée depuis votre dernière visite.</Line>
       </ul>
     ),
