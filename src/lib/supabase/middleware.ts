@@ -39,6 +39,7 @@ export async function updateSession(request: NextRequest) {
     "/dashboard",
     "/annonces",
     "/carte",
+    "/archives",
     "/groupes",
     "/agents",
     "/contributeurs",

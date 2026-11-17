@@ -25,6 +25,7 @@ import {
   Send,
   Flag,
   Megaphone,
+  Archive,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/annonces", label: "Annonces", icon: Building2 },
   { href: "/carte", label: "Carte", icon: MapIcon },
+  { href: "/archives", label: "Archivage", icon: Archive },
   { href: "/groupes", label: "Groupes FB", icon: Users },
   { href: "/agents", label: "Agents immo", icon: UserCircle },
   { href: "/contributeurs", label: "Contributeurs", icon: UserCheck },
