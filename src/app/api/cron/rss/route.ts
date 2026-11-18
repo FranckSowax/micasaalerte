@@ -9,6 +9,22 @@ import { autoVerify } from "@/lib/annonce-verify";
 
 /** Photos copiées dans le stockage par passage : borne la durée du cron. */
 const MAX_PHOTOS_PER_RUN = 40;
+
+// Allègement de la base (machine Supabase Nano) :
+// WHY: la lecture des flux reste toutes les 5 min (le flux le plus actif ne couvre que 15 à 40 min),
+// mais ~100 des ~145 publications lues sont déjà connues et coûtaient chacune une requête.
+// Elles sont mémorisées ici entre deux passages ; seules les tâches de fond lourdes
+// (fusion des doublons, archivage, vérification RapidAPI, copie des photos) sont espacées.
+const HOUSEKEEPING_EVERY_MS = 30 * 60 * 1000;
+const KNOWN_CACHE_MAX = 20_000;
+let lastHousekeeping = 0;
+/** Publications déjà connues : « compte:publication » → plus long texte vu pour elle. */
+const knownPosts = new Map<string, number>();
+
+function rememberKnown(key: string, textLength: number) {
+  if (knownPosts.size >= KNOWN_CACHE_MAX) knownPosts.clear();
+  knownPosts.set(key, Math.max(textLength, knownPosts.get(key) ?? 0));
+}
 import { configuredFeedUrls, feedShape, parseFeed, tiktokHandle, type FeedPost } from "@/lib/rss-feed";
 import { NextResponse } from "next/server";
 
@@ -44,6 +60,9 @@ async function handleCron(request: Request) {
 
   const client = createServiceClient();
   const reread = new URL(request.url).searchParams.get("reread") === "on";
+  // Tâches de fond : toutes les 30 min, ou à la demande (?housekeeping=on).
+  const housekeeping = new URL(request.url).searchParams.get("housekeeping") === "on" || Date.now() - lastHousekeeping >= HOUSEKEEPING_EVERY_MS;
+  if (housekeeping) lastHousekeeping = Date.now();
   const rereadStats: Record<string, number> = {};
 
   const { data: groupRows } = await client
@@ -103,7 +122,9 @@ async function handleCron(request: Request) {
   const dedupe = new DedupeIndex();
   const accountIds = new Set<string>();
   for (const list of Array.from(sources.values())) for (const row of list) accountIds.add(row.userId);
-  for (const userId of Array.from(accountIds)) stats.mergedExisting += await mergeExistingDuplicates(client, dedupe, userId);
+  if (housekeeping) {
+    for (const userId of Array.from(accountIds)) stats.mergedExisting += await mergeExistingDuplicates(client, dedupe, userId);
+  }
 
   for (const feedUrl of feedUrls) {
     let posts: FeedPost[];
@@ -175,6 +196,13 @@ async function handleCron(request: Request) {
           stats.aiErrors++;
           continue;
         }
+        // Déjà connue et texte pas plus long qu'au dernier passage : résultat identique, sans requête.
+        const knownKey = `${source.userId}:${post.postId}`;
+        if (!reread && (knownPosts.get(knownKey) ?? -1) >= post.text.length) {
+          stats.known++;
+          oldestChecked = true;
+          continue;
+        }
         if (analyses >= MAX_ANALYSES_PER_RUN) {
           stats.deferred++;
           continue;
@@ -219,6 +247,7 @@ async function handleCron(request: Request) {
         }
 
         oldestChecked = true;
+        if (status === "known" || status === "enriched" || status === "duplicate") rememberKnown(knownKey, post.text.length);
         if (status === "known") stats.known++;
         else if (status === "enriched") {
           analyses++;
@@ -266,31 +295,33 @@ async function handleCron(request: Request) {
       .in("id", Array.from(touchedTiktok));
   }
 
-  // Annonces de plus de 60 heures : archivées (les favoris sont laissés).
-  try {
-    stats.expired = await archiveExpired(client);
-  } catch (error) {
-    console.error("Expiry archive failed:", error instanceof Error ? error.message : error);
-  }
-
-  // Relecture RapidAPI de l'annonce la plus douteuse, plafonnée par jour (RAPIDAPI_AUTO_PER_DAY).
-  // Avant la copie des photos, pour que l'album récupéré soit copié dans le même passage.
-  let verify: Record<string, unknown> = {};
-  try {
-    verify = await autoVerify(client, allowedAgents);
-  } catch (error) {
-    verify = { error: error instanceof Error ? error.message : "erreur" };
-  }
-
-  // Copie permanente des photos : les liens Facebook et TikTok expirent en quelques jours.
+  let verify: Record<string, unknown> = { skipped: "prochain passage de fond" };
   let photos = { stored: 0, dead: 0, failed: 0 };
-  try {
-    photos = await persistPhotos(client, MAX_PHOTOS_PER_RUN);
-  } catch (error) {
-    console.error("Photo copy failed:", error instanceof Error ? error.message : error);
+  if (housekeeping) {
+    // Annonces de plus de 60 heures : archivées (les favoris sont laissés).
+    try {
+      stats.expired = await archiveExpired(client);
+    } catch (error) {
+      console.error("Expiry archive failed:", error instanceof Error ? error.message : error);
+    }
+
+    // Relecture RapidAPI de l'annonce la plus douteuse, plafonnée par jour (RAPIDAPI_AUTO_PER_DAY).
+    // Avant la copie des photos, pour que l'album récupéré soit copié dans le même passage.
+    try {
+      verify = await autoVerify(client, allowedAgents);
+    } catch (error) {
+      verify = { error: error instanceof Error ? error.message : "erreur" };
+    }
+
+    // Copie permanente des photos : les liens Facebook et TikTok expirent en quelques jours.
+    try {
+      photos = await persistPhotos(client, MAX_PHOTOS_PER_RUN);
+    } catch (error) {
+      console.error("Photo copy failed:", error instanceof Error ? error.message : error);
+    }
   }
 
-  return NextResponse.json({ success: true, ...stats, reprocessed, photos, verify, feeds, shapes, unknownSources, aiErrorMessages,
+  return NextResponse.json({ success: true, housekeeping, cachedKnown: knownPosts.size, ...stats, reprocessed, photos, verify, feeds, shapes, unknownSources, aiErrorMessages,
     tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds },
     ...(reread ? { reread: rereadStats } : {}),
   });
