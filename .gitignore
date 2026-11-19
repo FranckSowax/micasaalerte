@@ -42,3 +42,5 @@ next-env.d.ts
 
 # Prompts d agents d exploitation (fonctionnement interne) : jamais dans le depot public
 /docs/agents/
+/marketing-conversion/
+/marketing-conversion-16x9/

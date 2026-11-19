@@ -13,6 +13,7 @@ import { Map, type MapMarker } from "@/components/map";
 import { ZONE_COLOR } from "@/lib/map-format";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/geo";
 import { formatDate, formatPrice, getTypeBienLabel } from "@/lib/utils";
+import { activeFilterCount, availableTypes, filterListings, LISTING_SORT_LABELS, LISTING_SORTS, NO_FILTERS, sortListings, type ListingFilters, type ListingSort } from "@/lib/client-listing-filter";
 import { cardDescription, cardMeta, cardPhotoLabel, cardPlace, cardPrice, cardTitle, otherDoubts, primaryAction, publishedLabel } from "@/lib/client-card";
 
 // Même police et même thème clair que l'inscription : l'abonné ne change pas d'univers.
@@ -312,6 +313,12 @@ const TABS: { key: Tab; label: string }[] = [
 const PANEL_SHADOW = "shadow-[0_18px_55px_rgba(45,36,32,.07),0_2px_8px_rgba(45,36,32,.04)]";
 
 /** « Mes annonces » regroupe les annonces déjà triées : gardées, ou écartées (sélecteur). */
+/** Puce de filtre (Avec photos, Meublé, type de bien) : olive quand elle est active. */
+const filterChip = (on: boolean) =>
+  `inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FAF8F5] motion-reduce:transition-none ${
+    on ? "border-[#4A6741] bg-[#4A6741] text-[#FAF8F5] hover:bg-[#3A5533]" : "border-[#E1DCD5] bg-[#F0EFED] text-[#2D2420] hover:bg-[#E5ECDF]"
+  }`;
+
 const isMine = (t: Tab) => t === "kept" || t === "removed";
 // WHY: les trois onglets tiennent sur une ligne dès 360 px ; au-delà, ils se partagent la largeur.
 const TAB_CLASS = "inline-flex min-h-[44px] flex-auto items-center justify-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F0EFED] motion-reduce:transition-none";
@@ -333,6 +340,9 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   const [copied, setCopied] = useState(false);
   // Carte affichée d'emblée : l'abonné situe tout de suite les annonces de l'onglet ouvert.
   const [showMap, setShowMap] = useState(true);
+  // Tri et filtres sous la carte : les filtres s'appliquent à la carte et à la liste, le tri à la liste.
+  const [sort, setSort] = useState<ListingSort>("recent");
+  const [filters, setFilters] = useState<ListingFilters>(NO_FILTERS);
 
   /** Copie la référence de commande, à coller dans le menu Airtel Money. */
   const copyReference = async (reference: string) => {
@@ -633,17 +643,21 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
   }, [space]);
 
   const visible = useMemo(() => (space?.annonces || []).filter((a) => tabOf(a) === tab), [space, tab]);
+  const types = useMemo(() => availableTypes(visible), [visible]);
+  const filtered = useMemo(() => filterListings(visible, filters), [visible, filters]);
+  const sorted = useMemo(() => sortListings(filtered, sort), [filtered, sort]);
+  const filterCount = activeFilterCount(filters);
 
   // Zones de recherche : mêmes objets d'un rendu à l'autre, pour ne pas recadrer la carte sans raison.
   const zoneCircles = useMemo(
     () => (space?.zones || []).map((z, i) => ({ id: `zone-${i}`, lat: z.lat, lon: z.lon, radiusKm: z.radiusKm, color: ZONE_COLOR, label: z.label })),
     [space]
   );
-  const mappedCount = useMemo(() => visible.filter((a) => a.geo).length, [visible]);
+  const mappedCount = useMemo(() => filtered.filter((a) => a.geo).length, [filtered]);
 
   const markers = useMemo<MapMarker[]>(() => {
     const groups: Record<string, { lat: number; lon: number; lieu: string; items: ClientAnnonce[] }> = {};
-    for (const a of visible) {
+    for (const a of filtered) {
       if (!a.geo) continue;
       const key = `${a.geo.lat},${a.geo.lon}`;
       (groups[key] = groups[key] || { ...a.geo, items: [] }).items.push(a);
@@ -668,7 +682,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
       })),
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, tab, lastVisit]);
+  }, [filtered, tab, lastVisit]);
 
   if (state === "loading") {
     return (
@@ -959,7 +973,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
         {showMap && (
           <p className="text-xs text-muted-foreground -mb-2" role="status" aria-live="polite">
             Carte : {mappedCount} annonce{mappedCount > 1 ? "s" : ""} « {TABS.find((t) => t.key === tab)?.label} »
-            {visible.length > mappedCount ? ` · ${visible.length - mappedCount} sans lieu précis` : ""}
+            {filtered.length > mappedCount ? ` · ${filtered.length - mappedCount} sans lieu précis` : ""}
           </p>
         )}
         {showMap && (
@@ -974,7 +988,62 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
           />
         )}
 
-        {!visible.length ? (
+        {visible.length > 0 && (
+          <section aria-label="Trier et filtrer les annonces" className={`rounded-[24px] bg-[#FAF8F5] p-3 sm:p-4 ${PANEL_SHADOW}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex items-center gap-2 text-sm font-semibold text-[#2D2420]">
+                <SlidersHorizontal className="h-4 w-4 text-[#4A6741]" aria-hidden="true" />
+                <span className="shrink-0">Trier par</span>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as ListingSort)}
+                  className="min-h-[44px] w-full flex-1 rounded-full border border-[#E1DCD5] bg-[#F0EFED] px-4 text-sm font-semibold text-[#2D2420] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] sm:w-auto sm:flex-none"
+                >
+                  {LISTING_SORTS.map((key) => <option key={key} value={key}>{LISTING_SORT_LABELS[key]}</option>)}
+                </select>
+              </label>
+              <p className="text-xs text-[#6B615B]" role="status" aria-live="polite">
+                {filtered.length === visible.length
+                  ? `${visible.length} annonce${visible.length > 1 ? "s" : ""}`
+                  : `${filtered.length} sur ${visible.length} annonce${visible.length > 1 ? "s" : ""}`}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtres">
+              {([
+                ["withPhotos", "Avec photos"],
+                ["furnished", "Meublé"],
+              ] as const).map(([key, label]) => (
+                <button key={key} type="button" aria-pressed={filters[key]} className={filterChip(filters[key])} onClick={() => setFilters((f) => ({ ...f, [key]: !f[key] }))}>
+                  {filters[key] && <Check className="h-3.5 w-3.5" aria-hidden="true" />} {label}
+                </button>
+              ))}
+              {types.length > 1 && types.map((t) => {
+                const on = filters.types.includes(t);
+                return (
+                  <button key={t} type="button" aria-pressed={on} className={filterChip(on)} onClick={() => setFilters((f) => ({ ...f, types: on ? f.types.filter((x) => x !== t) : [...f.types, t] }))}>
+                    {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />} {getTypeBienLabel(t)}
+                  </button>
+                );
+              })}
+              {filterCount > 0 && (
+                <button type="button" className="min-h-[40px] rounded-full px-3 text-sm font-semibold text-[#6B615B] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741]" onClick={() => setFilters(NO_FILTERS)}>
+                  Effacer les filtres
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {visible.length > 0 && !sorted.length ? (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground space-y-3">
+              <p>Aucune annonce ne correspond à ces filtres.</p>
+              <button type="button" className="min-h-[44px] rounded-full bg-[#4A6741] px-5 text-sm font-semibold text-[#FAF8F5] hover:bg-[#3A5533] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A6741] focus-visible:ring-offset-2" onClick={() => setFilters(NO_FILTERS)}>
+                Effacer les filtres
+              </button>
+            </CardContent>
+          </Card>
+        ) : !visible.length ? (
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground text-sm">
               {tab === "new"
@@ -988,7 +1057,7 @@ export default function ClientSpacePage(props: { params: Promise<{ token: string
           </Card>
         ) : (
           <div className="space-y-5">
-            {visible.map((a) => {
+            {sorted.map((a) => {
               const toSort = a.status === "new";
               const contacted = !!contacts[a.id];
               const askFollowup = toSort && contacted && !followupsDone[a.id];
