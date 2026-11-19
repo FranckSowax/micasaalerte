@@ -9,8 +9,11 @@ import { formatPrice, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import type { Annonce, FacebookGroup, DashboardStats } from "@/types/database";
+import { BusinessSection, PERIODS } from "./business-section";
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: { searchParams: Promise<{ periode?: string }> }) {
+  const { periode } = await props.searchParams;
+  const period = PERIODS.find((p) => String(p) === periode) ?? 30;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -114,6 +117,9 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* Abonnés, inscriptions et chiffre d'affaires */}
+      <BusinessSection userId={user.id} period={period} />
 
       {/* Volume WhatsApp */}
       <Card>
