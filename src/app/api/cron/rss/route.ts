@@ -100,6 +100,12 @@ async function handleCron(request: Request) {
   // Diagnostic TikTok : comptes enregistrés, et vidéos présentes dans les flux par compte.
   const tiktokRegistered = new Set<string>();
   const tiktokInFeeds: Record<string, number> = {};
+  // Devenir de chaque vidéo TikTok lue (non enregistrée, trop vieille, doublon, nouvelle annonce…).
+  const tiktokOutcomes: Record<string, number> = {};
+  const unknownTiktok: Record<string, number> = {};
+  const countTiktok = (post: FeedPost, outcome: string) => {
+    if (post.kind === "tiktok") tiktokOutcomes[outcome] = (tiktokOutcomes[outcome] || 0) + 1;
+  };
   for (const t of ((tiktokRows || []) as unknown as { user_id: string }[]).filter(isAllowed) as unknown as { id: string; user_id: string; tiktok_handle: string; profiles: OwnerProfile }[]) {
     const handle = tiktokHandle(t.tiktok_handle);
     if (!handle) continue;
@@ -167,16 +173,20 @@ async function handleCron(request: Request) {
         // Pour un profil, on ajoute le nom de l'auteur : c'est lui qu'il faut enregistrer comme agent.
         const label = post.kind === "profile" ? `${sourceKey} (${post.author || "?"})` : sourceKey;
         unknownSources[label] = (unknownSources[label] || 0) + 1;
+        if (post.kind === "tiktok") unknownTiktok[post.sourceId.toLowerCase()] = (unknownTiktok[post.sourceId.toLowerCase()] || 0) + 1;
+        countTiktok(post, "compte_non_enregistre");
         continue;
       }
       // Un post TikTok sans légende reste analysable : son annonce est écrite sur l'image.
       if (!post.text && !(post.kind === "tiktok" && post.images.length)) {
         stats.empty++;
+        countTiktok(post, "vide");
         continue;
       }
       // Publication de plus de 60 heures (durée de vie d'une annonce) : ni analysée ni enregistrée.
       if (isExpired({ fb_posted_at: post.publishedAt })) {
         stats.tooOld++;
+        countTiktok(post, "trop_ancienne");
         continue;
       }
 
@@ -190,21 +200,25 @@ async function handleCron(request: Request) {
         (post.kind === "group" ? touchedGroups : post.kind === "profile" ? touchedAgents : touchedTiktok).add(source.id);
         if (repeated) {
           stats.known++;
+          countTiktok(post, "deja_vue");
           continue;
         }
         if (!isAIConfigured(source.aiKey)) {
           stats.aiErrors++;
+          countTiktok(post, "ia_non_configuree");
           continue;
         }
         // Déjà connue et texte pas plus long qu'au dernier passage : résultat identique, sans requête.
         const knownKey = `${source.userId}:${post.postId}`;
         if (!reread && (knownPosts.get(knownKey) ?? -1) >= post.text.length) {
           stats.known++;
+          countTiktok(post, "deja_vue");
           oldestChecked = true;
           continue;
         }
         if (analyses >= MAX_ANALYSES_PER_RUN) {
           stats.deferred++;
+          countTiktok(post, "reportee");
           continue;
         }
 
@@ -238,6 +252,7 @@ async function handleCron(request: Request) {
           },
         };
         const status = await ingestPost(client, input, dedupe);
+        countTiktok(post, status);
 
         // Relecture ponctuelle (?reread=on) des images TikTok vues avant la lecture des images.
         if (reread && status === "known" && post.kind === "tiktok") {
@@ -321,8 +336,12 @@ async function handleCron(request: Request) {
     }
   }
 
+  // WHY: la réponse complète dépasse la taille d'une ligne de journal Railway et n'apparaît pas ;
+  // ce résumé court permet de suivre la collecte TikTok dans les journaux du service web.
+  console.log(`[rss] tiktok ${JSON.stringify({ comptes: tiktokRegistered.size, videosParCompte: tiktokInFeeds, comptesNonEnregistres: unknownTiktok, devenir: tiktokOutcomes })}`);
+
   return NextResponse.json({ success: true, housekeeping, cachedKnown: knownPosts.size, ...stats, reprocessed, photos, verify, feeds, shapes, unknownSources, aiErrorMessages,
-    tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds },
+    tiktok: { registered: Array.from(tiktokRegistered).sort(), inFeeds: tiktokInFeeds, unknown: unknownTiktok, outcomes: tiktokOutcomes },
     ...(reread ? { reread: rereadStats } : {}),
   });
 }
